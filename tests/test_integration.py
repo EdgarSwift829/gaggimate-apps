@@ -181,6 +181,63 @@ class IntegrationTest:
                 preview = data["suggestion"][:100].replace("\n", " ")
                 print(f"  ... suggestion: {preview}...")
 
+    def test_llm_connection(self) -> bool:
+        print("\n== 9. LLM接続テスト ==")
+        r = self.client.get("/api/llm/test")
+        self.check("GET /api/llm/test returns 200", r.status_code == 200)
+        data = r.json()
+        connected = data.get("connected", False)
+        self.check("LM Studio connected", connected,
+                    data.get("error", "unknown error") if not connected else "")
+        if connected:
+            models = data.get("available_models", [])
+            print(f"  ... base_url: {data.get('base_url')}")
+            print(f"  ... available models: {models}")
+        else:
+            print(f"  ... LM Studio未起動またはURL不正: {data.get('error', '')}")
+        return connected
+
+    def test_llm_suggest(self, shot_id: int):
+        print(f"\n== 10. LLM改善提案生成 (shot_id={shot_id}) ==")
+        r = self.client.post("/api/llm/suggest", json={
+            "shot_id": shot_id,
+            "extra_feedback": "酸味が少し強い。もう少し甘みがほしい。"
+        }, timeout=60)  # LLM生成は時間がかかる場合がある
+        self.check("POST /api/llm/suggest returns 200", r.status_code == 200,
+                    f"status={r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            suggestion = data.get("suggestion", "")
+            self.check("suggestion is not empty", len(suggestion) > 10)
+            self.check("suggestion is not error", "LLM接続エラー" not in suggestion,
+                        suggestion[:100])
+            preview = suggestion[:150].replace("\n", " ")
+            print(f"  ... suggestion: {preview}...")
+
+    def test_llm_suggestions_history(self, shot_id: int):
+        print(f"\n== 11. LLM提案履歴 (shot_id={shot_id}) ==")
+        r = self.client.get(f"/api/llm/suggestions/{shot_id}")
+        self.check("GET /api/llm/suggestions/{id} returns 200", r.status_code == 200)
+        data = r.json()
+        self.check("has suggestion history", isinstance(data, list) and len(data) > 0,
+                    f"got {len(data)} entries")
+
+    def test_llm_recipe_customize(self):
+        print("\n== 12. LLMレシピカスタマイズ ==")
+        r = self.client.post("/api/recipes/customize", json={
+            "request": "エチオピアの浅煎りに合うレシピを提案してください。フルーティーな風味を引き出したい。"
+        }, timeout=60)
+        self.check("POST /api/recipes/customize returns 200", r.status_code == 200,
+                    f"status={r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            suggestion = data.get("suggestion", "")
+            self.check("recipe suggestion is not empty", len(suggestion) > 10)
+            self.check("suggestion is not error", "LLM接続エラー" not in suggestion,
+                        suggestion[:100])
+            preview = suggestion[:150].replace("\n", " ")
+            print(f"  ... recipe suggestion: {preview}...")
+
     def run(self):
         print("=" * 60)
         print("GaggiMate 結合テスト")
@@ -195,6 +252,7 @@ class IntegrationTest:
         recipe_id = self.test_recipes_crud()
 
         # Brew cycle (requires simulator)
+        shot_id = None
         if machine_connected:
             shot_id = self.test_brew_cycle()
             if shot_id:
@@ -203,9 +261,22 @@ class IntegrationTest:
                 self.test_feedback(shot_id, bean_id)
         else:
             print("\n== 5-8. 抽出サイクルテスト [SKIP] ==")
-            print("  GaggiMateシミュレーターに未接続。接続テストをスキップします。")
-            print("  シミュレーターを起動してください:")
-            print("    cd simulator && python gaggimate_sim.py --ws-port 8765 --webhook-url http://localhost:8000/webhook")
+            print("  GaggiMateシミュレーターに未接続。スキップします。")
+
+        # LLM tests
+        llm_connected = self.test_llm_connection()
+        if llm_connected and shot_id:
+            self.test_llm_suggest(shot_id)
+            self.test_llm_suggestions_history(shot_id)
+            self.test_llm_recipe_customize()
+        elif not llm_connected:
+            print("\n== 10-12. LLMテスト [SKIP] ==")
+            print("  LM Studio未接続。LLMテストをスキップします。")
+            print("  LM Studioを起動してLocal Serverをオンにしてください。")
+        elif not shot_id:
+            print("\n== 10-11. LLM提案テスト [SKIP] ==")
+            print("  ショットデータがないためスキップ。")
+            self.test_llm_recipe_customize()
 
         # Summary
         print("\n" + "=" * 60)

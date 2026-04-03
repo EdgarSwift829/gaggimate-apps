@@ -87,6 +87,16 @@ export const customizeRecipe = (request: string, baseId?: number) =>
     body: JSON.stringify({ request, base_recipe_id: baseId }),
   });
 
+// --- LLM ---
+export const testLLM = () => fetchJSON<{ connected: boolean; base_url: string; available_models?: string[]; error?: string }>("/api/llm/test");
+export const suggestImprovement = (shotId: number, extraFeedback?: string) =>
+  fetchJSON<{ suggestion: string; analysis: Record<string, unknown> }>("/api/llm/suggest", {
+    method: "POST",
+    body: JSON.stringify({ shot_id: shotId, extra_feedback: extraFeedback }),
+  });
+export const getLLMSuggestions = (shotId: number) =>
+  fetchJSON<Array<{ id: number; response: string; created_at: string }>>(`/api/llm/suggestions/${shotId}`);
+
 // --- Machine ---
 export const getHealth = () => fetchJSON<{ status: string; gaggimate_connected: boolean }>("/api/health");
 export const startBrew = () => fetchJSON("/api/machine/brew/start", { method: "POST" });

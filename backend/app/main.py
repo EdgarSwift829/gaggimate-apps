@@ -10,7 +10,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import shots, beans, recipes, webhook, machine
+from app.routers import shots, beans, recipes, webhook, machine, llm_api
 from app.services.gaggimate_ws import gaggimate_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -33,6 +33,7 @@ app.include_router(beans.router)
 app.include_router(recipes.router)
 app.include_router(webhook.router)
 app.include_router(machine.router)
+app.include_router(llm_api.router)
 
 # --- フロントエンド向けWebSocket（リアルタイムステータス中継）---
 

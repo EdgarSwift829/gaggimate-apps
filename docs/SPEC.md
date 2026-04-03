@@ -282,4 +282,41 @@ SQLクエリで対応。LLM不要。
 
 ---
 
+## 11. GaggiMate ダミーシミュレーター
+
+実機到着前の開発・テスト用に、GaggiMate ProのWebSocket API / Webhookをローカルで模擬するPythonシミュレーターを用意。
+
+### 11-1. 機能
+
+| 機能 | 対応状況 |
+|---|---|
+| WebSocket `sub:status` ステータス配信（1-2秒間隔） | 対応済み |
+| ボイラー加熱シミュレーション（PID的な温度変化） | 対応済み |
+| 抽出シミュレーション（プロファイルのフェーズに従った圧力・フロー・重量変化） | 対応済み |
+| `req:brew:start` / `req:brew:stop` コマンド | 対応済み |
+| `req:profiles:list` / `select` / `save` / `delete` / `favorite` | 対応済み |
+| ショット完了Webhook（POST） | 対応済み |
+| センサーノイズ（リアルな揺らぎ） | 対応済み |
+| MQTT | 未実装（Phase 2で必要に応じて追加） |
+
+### 11-2. 起動方法
+
+```bash
+# 依存インストール
+pip install -r simulator/requirements.txt
+
+# シミュレーター起動
+python simulator/gaggimate_sim.py --ws-port 8765 --webhook-url http://localhost:8000/webhook
+
+# テストクライアントで動作確認
+python simulator/test_client.py --url ws://localhost:8765
+```
+
+### 11-3. デフォルトプロファイル
+
+- **Classic Espresso**: 93°C / 5s preinfusion @ 2bar → 25s extraction @ 9bar
+- **Long Preinfusion**: 92°C / 8s bloom @ 2.5bar → ramp → 15s main @ 8.5bar → 5s decline
+
+---
+
 > 本仕様書はGaggiMate公式情報・GitHubリポジトリ・コミュニティ情報をもとに整理したものです。

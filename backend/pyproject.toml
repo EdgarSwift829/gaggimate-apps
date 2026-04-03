@@ -1,0 +1,21 @@
+[project]
+name = "gaggimate-backend"
+version = "0.1.0"
+description = "GaggiMate連携アプリ バックエンド（FastAPI）"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "websockets>=13.0",
+    "aiohttp>=3.9",
+    "paho-mqtt>=2.1",
+    "openai>=1.50",
+    "aiosqlite>=0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]

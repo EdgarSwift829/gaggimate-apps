@@ -6,7 +6,7 @@ import { getShot, saveFeedback, getBeans, type Bean, type TimeseriesPoint } from
 export default function ShotResult() {
   const { id } = useParams<{ id: string }>();
   const shotId = Number(id);
-  const [shot, setShot] = useState<Record<string, unknown> | null>(null);
+  const [shot, setShot] = useState<any>(null);
   const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([]);
   const [beans, setBeans] = useState<Bean[]>([]);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -55,15 +55,15 @@ export default function ShotResult() {
       {/* サマリー */}
       <div className="status-grid mb-16">
         <div className="stat">
-          <div className="value">{shot?.duration ?? "--"}s</div>
+          <div className="value">{String(shot?.duration ?? "--")}s</div>
           <div className="label">抽出時間</div>
         </div>
         <div className="stat">
-          <div className="value">{shot?.yield_g ?? "--"}g</div>
+          <div className="value">{String(shot?.yield_g ?? "--")}g</div>
           <div className="label">抽出量</div>
         </div>
         <div className="stat">
-          <div className="value">{shot?.yield_ratio ?? "--"}x</div>
+          <div className="value">{String(shot?.yield_ratio ?? "--")}x</div>
           <div className="label">収率</div>
         </div>
       </div>

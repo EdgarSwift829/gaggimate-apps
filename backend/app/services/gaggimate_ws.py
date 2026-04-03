@@ -1,117 +1,120 @@
-"""GaggiMate WebSocket client for real-time data and commands."""
+"""GaggiMate WebSocket クライアント — リアルタイムデータ受信 & コマンド送信."""
+
+from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from typing import Optional, Callable
+import uuid
+from typing import Any, Callable
 
 import websockets
 
-from ..config import settings
-from ..models import MachineState, TimeseriesPoint
+from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("gaggimate_ws")
 
 
-class GaggiMateClient:
-    """Manages WebSocket connection to GaggiMate Pro."""
+class GaggiMateWSClient:
+    """GaggiMate ProへのWebSocket接続を管理するクライアント."""
 
-    def __init__(self):
-        self.ws: Optional[websockets.WebSocketClientProtocol] = None
-        self.state = MachineState()
-        self.is_brewing = False
-        self.shot_buffer: list[TimeseriesPoint] = []
-        self._listeners: list[Callable] = []
-        self._task: Optional[asyncio.Task] = None
+    def __init__(self) -> None:
+        self.ws: websockets.WebSocketClientProtocol | None = None
+        self._listeners: list[Callable[[dict], Any]] = []
+        self._running = False
+        self._brew_buffer: list[dict] = []
+        self._is_brewing = False
 
-    def add_listener(self, callback: Callable):
-        self._listeners.append(callback)
+    @property
+    def url(self) -> str:
+        return f"ws://{settings.gaggimate_host}:{settings.gaggimate_ws_port}"
 
-    async def connect(self):
-        """Connect to GaggiMate WebSocket and start listening."""
-        self._task = asyncio.create_task(self._listen_loop())
+    def add_listener(self, fn: Callable[[dict], Any]) -> None:
+        self._listeners.append(fn)
 
-    async def disconnect(self):
-        if self._task:
-            self._task.cancel()
+    @property
+    def is_brewing(self) -> bool:
+        return self._is_brewing
+
+    @property
+    def brew_buffer(self) -> list[dict]:
+        return list(self._brew_buffer)
+
+    def clear_brew_buffer(self) -> None:
+        self._brew_buffer.clear()
+
+    async def connect(self) -> None:
+        """接続して受信ループを開始."""
+        self._running = True
+        while self._running:
+            try:
+                logger.info("Connecting to GaggiMate at %s ...", self.url)
+                async with websockets.connect(self.url) as ws:
+                    self.ws = ws
+                    logger.info("Connected to GaggiMate")
+                    async for raw in ws:
+                        try:
+                            data = json.loads(raw)
+                            await self._handle_message(data)
+                        except json.JSONDecodeError:
+                            logger.warning("Invalid JSON received")
+            except (ConnectionRefusedError, OSError) as e:
+                logger.warning("Connection failed: %s. Retrying in 5s...", e)
+                await asyncio.sleep(5)
+            except websockets.ConnectionClosed:
+                logger.warning("Connection closed. Reconnecting in 3s...")
+                await asyncio.sleep(3)
+
+    async def _handle_message(self, data: dict) -> None:
+        tp = data.get("tp", "")
+
+        if tp == "sub:status":
+            mode = data.get("mode", "standby")
+            was_brewing = self._is_brewing
+            self._is_brewing = mode == "brew"
+
+            if self._is_brewing:
+                self._brew_buffer.append(data)
+            elif was_brewing and not self._is_brewing:
+                # 抽出終了の境界
+                logger.info("Brew ended. Buffer size: %d", len(self._brew_buffer))
+
+        for fn in self._listeners:
+            try:
+                result = fn(data)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                logger.exception("Listener error")
+
+    async def send_command(self, tp: str, **kwargs) -> str:
+        """GaggiMateにコマンドを送信. request idを返す."""
+        if not self.ws:
+            raise ConnectionError("Not connected to GaggiMate")
+        rid = uuid.uuid4().hex[:8]
+        msg = {"tp": tp, "rid": rid, **kwargs}
+        await self.ws.send(json.dumps(msg))
+        logger.info("Sent command: %s (rid=%s)", tp, rid)
+        return rid
+
+    async def start_brew(self) -> str:
+        self._brew_buffer.clear()
+        return await self.send_command("req:brew:start")
+
+    async def stop_brew(self) -> str:
+        return await self.send_command("req:brew:stop")
+
+    async def list_profiles(self) -> str:
+        return await self.send_command("req:profiles:list")
+
+    async def select_profile(self, profile: dict) -> str:
+        return await self.send_command("req:profile:select", profile=profile)
+
+    async def disconnect(self) -> None:
+        self._running = False
         if self.ws:
             await self.ws.close()
 
-    async def _listen_loop(self):
-        while True:
-            try:
-                async with websockets.connect(settings.GAGGIMATE_WS_URL) as ws:
-                    self.ws = ws
-                    self.state.status = "idle"
-                    logger.info("Connected to GaggiMate at %s", settings.GAGGIMATE_WS_URL)
-                    async for message in ws:
-                        await self._handle_message(message)
-            except (websockets.ConnectionClosed, OSError) as e:
-                self.state.status = "disconnected"
-                logger.warning("GaggiMate connection lost: %s. Reconnecting in 5s...", e)
-                await asyncio.sleep(5)
 
-    async def _handle_message(self, raw: str):
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            return
-
-        msg_type = data.get("type", "")
-
-        if msg_type == "sensor" or "temperature" in data:
-            self.state.temperature = data.get("temperature", self.state.temperature)
-            self.state.pressure = data.get("pressure", self.state.pressure)
-            self.state.weight = data.get("weight", self.state.weight)
-            self.state.flow = data.get("flow", self.state.flow)
-
-            if self.is_brewing:
-                point = TimeseriesPoint(
-                    t=data.get("t", len(self.shot_buffer)),
-                    pressure=data.get("pressure"),
-                    temp=data.get("temperature"),
-                    weight=data.get("weight"),
-                    flow=data.get("flow"),
-                )
-                self.shot_buffer.append(point)
-
-        elif msg_type == "status":
-            status = data.get("status", "")
-            self.state.status = status
-            if status == "brewing" and not self.is_brewing:
-                self.is_brewing = True
-                self.shot_buffer = []
-            elif status != "brewing" and self.is_brewing:
-                self.is_brewing = False
-
-        for listener in self._listeners:
-            try:
-                await listener(data)
-            except Exception as e:
-                logger.error("Listener error: %s", e)
-
-    async def send_recipe(self, recipe_json: str):
-        """Send a recipe JSON to GaggiMate."""
-        if self.ws:
-            await self.ws.send(json.dumps({
-                "type": "recipe",
-                "data": json.loads(recipe_json),
-            }))
-
-    async def send_command(self, action: str):
-        """Send a brew command (start/stop)."""
-        if self.ws:
-            await self.ws.send(json.dumps({
-                "type": "command",
-                "action": action,
-            }))
-
-    def take_shot_buffer(self) -> list[TimeseriesPoint]:
-        """Take and clear the current shot buffer."""
-        buffer = self.shot_buffer[:]
-        self.shot_buffer = []
-        return buffer
-
-
-# Singleton instance
-gaggimate_client = GaggiMateClient()
+# シングルトンインスタンス
+gaggimate_client = GaggiMateWSClient()

@@ -1,128 +1,120 @@
-"""Recipe CRUD API with favorites and sorting."""
+"""レシピ REST API."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-import aiosqlite
-from enum import Enum
+from __future__ import annotations
 
-from ..database import get_db
-from ..models import RecipeCreate, RecipeUpdate, RecipeOut
+import json as json_lib
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
-router = APIRouter(prefix="/recipes", tags=["recipes"])
+from app.database import get_db
+from app.services.llm import generate_recipe_suggestion
 
-
-class SortBy(str, Enum):
-    score = "avg_score"
-    use_count = "use_count"
-    created_at = "created_at"
-    name = "name"
+router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
 
-@router.get("", response_model=list[RecipeOut])
+class RecipeCreate(BaseModel):
+    name: str
+    profile_json: str  # GaggiMateプロファイルJSON文字列
+    version: int = 1
+    is_favorite: bool = False
+
+
+class RecipeCustomizeRequest(BaseModel):
+    request: str  # ユーザーの要望テキスト
+    base_recipe_id: int | None = None
+
+
+@router.get("")
 async def list_recipes(
+    sort: str = Query("created_at", pattern="^(created_at|avg_score|use_count)$"),
     favorites_only: bool = False,
-    sort_by: SortBy = SortBy.created_at,
-    sort_desc: bool = True,
     bean_id: int | None = None,
-    db: aiosqlite.Connection = Depends(get_db),
 ):
-    """List recipes with sorting and filtering."""
-    query = "SELECT DISTINCT r.* FROM recipes r"
-    params: list = []
+    """レシピ一覧（ソート・フィルター対応）."""
+    db = await get_db()
+    try:
+        query = "SELECT * FROM recipes"
+        params: list = []
+        conditions = []
 
-    if bean_id is not None:
-        query += " JOIN shots s ON s.recipe_id = r.id AND s.bean_id = ?"
-        params.append(bean_id)
+        if favorites_only:
+            conditions.append("is_favorite = 1")
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
 
-    conditions = []
-    if favorites_only:
-        conditions.append("r.is_favorite = 1")
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        order = {"created_at": "created_at DESC", "avg_score": "avg_score DESC NULLS LAST", "use_count": "use_count DESC"}
+        query += f" ORDER BY {order.get(sort, 'created_at DESC')}"
 
-    direction = "DESC" if sort_desc else "ASC"
-    # Handle NULL avg_score: put NULLs last
-    if sort_by == SortBy.score:
-        query += f" ORDER BY r.avg_score IS NULL, r.avg_score {direction}"
-    else:
-        query += f" ORDER BY r.{sort_by.value} {direction}"
+        rows = await db.execute(query, params)
+        results = [dict(r) for r in await rows.fetchall()]
 
-    cursor = await db.execute(query, params)
-    rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+        # 豆別フィルター: どのレシピがこの豆で使われたか
+        if bean_id is not None:
+            used_rows = await db.execute(
+                "SELECT DISTINCT recipe_id FROM shots WHERE bean_id = ?", [bean_id]
+            )
+            used_ids = {r["recipe_id"] for r in await used_rows.fetchall()}
+            results = [r for r in results if r["id"] in used_ids]
 
-
-@router.get("/{recipe_id}", response_model=RecipeOut)
-async def get_recipe(recipe_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
-    row = await cursor.fetchone()
-    if not row:
-        raise HTTPException(404, "Recipe not found")
-    return dict(row)
+        return results
+    finally:
+        await db.close()
 
 
-@router.post("", response_model=RecipeOut)
-async def create_recipe(recipe: RecipeCreate, db: aiosqlite.Connection = Depends(get_db)):
-    cursor = await db.execute(
-        "INSERT INTO recipes (name, json, version) VALUES (?, ?, ?)",
-        [recipe.name, recipe.json, recipe.version],
-    )
-    await db.commit()
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [cursor.lastrowid])
-    return dict(await cursor.fetchone())
-
-
-@router.put("/{recipe_id}", response_model=RecipeOut)
-async def update_recipe(
-    recipe_id: int, update: RecipeUpdate, db: aiosqlite.Connection = Depends(get_db)
-):
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
-    existing = await cursor.fetchone()
-    if not existing:
-        raise HTTPException(404, "Recipe not found")
-
-    updates = []
-    params = []
-
-    if update.name is not None:
-        updates.append("name = ?")
-        params.append(update.name)
-    if update.json is not None:
-        updates.append("json = ?")
-        params.append(update.json)
-        updates.append("version = version + 1")
-    if update.is_favorite is not None:
-        updates.append("is_favorite = ?")
-        params.append(1 if update.is_favorite else 0)
-
-    if updates:
-        params.append(recipe_id)
-        await db.execute(
-            f"UPDATE recipes SET {', '.join(updates)} WHERE id = ?", params
+@router.post("")
+async def create_recipe(body: RecipeCreate):
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO recipes (name, json, version, is_favorite) VALUES (?, ?, ?, ?)",
+            [body.name, body.profile_json, body.version, int(body.is_favorite)],
         )
         await db.commit()
-
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
-    return dict(await cursor.fetchone())
-
-
-@router.post("/{recipe_id}/favorite", response_model=RecipeOut)
-async def toggle_favorite(recipe_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    """Toggle the favorite status of a recipe."""
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
-    row = await cursor.fetchone()
-    if not row:
-        raise HTTPException(404, "Recipe not found")
-    new_val = 0 if dict(row)["is_favorite"] else 1
-    await db.execute("UPDATE recipes SET is_favorite = ? WHERE id = ?", [new_val, recipe_id])
-    await db.commit()
-    cursor = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
-    return dict(await cursor.fetchone())
+        return {"id": cursor.lastrowid, **body.model_dump()}
+    finally:
+        await db.close()
 
 
-@router.delete("/{recipe_id}")
-async def delete_recipe(recipe_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    cursor = await db.execute("DELETE FROM recipes WHERE id = ?", [recipe_id])
-    if cursor.rowcount == 0:
-        raise HTTPException(404, "Recipe not found")
-    await db.commit()
-    return {"ok": True}
+@router.patch("/{recipe_id}/favorite")
+async def toggle_favorite(recipe_id: int):
+    """お気に入りトグル."""
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT is_favorite FROM recipes WHERE id = ?", [recipe_id])
+        recipe = await row.fetchone()
+        if not recipe:
+            raise HTTPException(404, "Recipe not found")
+        new_val = 0 if recipe["is_favorite"] else 1
+        await db.execute("UPDATE recipes SET is_favorite = ? WHERE id = ?", [new_val, recipe_id])
+        await db.commit()
+        return {"id": recipe_id, "is_favorite": bool(new_val)}
+    finally:
+        await db.close()
+
+
+@router.post("/customize")
+async def customize_recipe(body: RecipeCustomizeRequest):
+    """LLMによるレシピカスタマイズ提案."""
+    db = await get_db()
+    try:
+        base_recipe = None
+        if body.base_recipe_id:
+            row = await db.execute("SELECT json FROM recipes WHERE id = ?", [body.base_recipe_id])
+            r = await row.fetchone()
+            if r:
+                base_recipe = json_lib.loads(r["json"])
+
+        # 過去ショット取得
+        past_rows = await db.execute(
+            "SELECT duration, yield_ratio, score, feedback FROM shots ORDER BY timestamp DESC LIMIT 5"
+        )
+        past_shots = [dict(r) for r in await past_rows.fetchall()]
+
+        suggestion = await generate_recipe_suggestion(
+            request=body.request,
+            past_shots=past_shots,
+            base_recipe=base_recipe,
+        )
+        return {"suggestion": suggestion}
+    finally:
+        await db.close()

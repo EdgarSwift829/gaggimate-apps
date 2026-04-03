@@ -1,89 +1,74 @@
-"""Numerical analysis for espresso shots (rule-based, no LLM)."""
+"""ショットデータの数値分析（ルールベース）."""
 
-from ..models import TimeseriesPoint
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class ShotAnalysis:
+    duration: float
+    dose_g: float
+    yield_g: float
+    yield_ratio: float
+    avg_pressure: float
+    peak_pressure: float
+    avg_temp: float
+    avg_flow: float
+    flags: list[str]
 
 
 def analyze_shot(
-    timeseries: list[TimeseriesPoint],
-    duration: float | None,
-    dose_g: float | None,
-    yield_g: float | None,
-) -> dict:
-    """Analyze shot data and return metrics + flags."""
+    timeseries: list[dict],
+    dose_g: float = 18.0,
+    yield_g: float | None = None,
+    target_duration: float = 27.0,
+    target_yield_ratio: float = 2.0,
+) -> ShotAnalysis:
+    """時系列データからショットを数値分析する."""
+    if not timeseries:
+        return ShotAnalysis(0, dose_g, 0, 0, 0, 0, 0, 0, ["no_data"])
 
-    result: dict = {
-        "duration_s": duration,
-        "dose_g": dose_g,
-        "yield_g": yield_g,
-        "ratio": None,
-        "peak_pressure_bar": None,
-        "avg_pressure_bar": None,
-        "avg_temp_c": None,
-        "flags": [],
-    }
+    duration = timeseries[-1].get("t", 0) - timeseries[0].get("t", 0)
+    pressures = [d.get("pressure", 0) for d in timeseries if d.get("pressure")]
+    temps = [d.get("temp", d.get("temperature", 0)) for d in timeseries if d.get("temp") or d.get("temperature")]
+    flows = [d.get("flow", 0) for d in timeseries if d.get("flow")]
+    weights = [d.get("weight", 0) for d in timeseries if d.get("weight")]
 
-    # Brew ratio
-    if dose_g and yield_g and dose_g > 0:
-        result["ratio"] = round(yield_g / dose_g, 2)
+    actual_yield = yield_g or (max(weights) if weights else 0)
+    yield_ratio = actual_yield / dose_g if dose_g > 0 else 0
 
-    # Pressure analysis
-    pressures = [p.pressure for p in timeseries if p.pressure is not None]
-    if pressures:
-        result["peak_pressure_bar"] = round(max(pressures), 1)
-        result["avg_pressure_bar"] = round(sum(pressures) / len(pressures), 1)
+    avg_pressure = sum(pressures) / len(pressures) if pressures else 0
+    peak_pressure = max(pressures) if pressures else 0
+    avg_temp = sum(temps) / len(temps) if temps else 0
+    avg_flow = sum(flows) / len(flows) if flows else 0
 
-    # Temperature analysis
-    temps = [p.temp for p in timeseries if p.temp is not None]
-    if temps:
-        result["avg_temp_c"] = round(sum(temps) / len(temps), 1)
+    # 異常検知フラグ
+    flags: list[str] = []
+    time_diff = duration - target_duration
+    if time_diff < -5:
+        flags.append(f"抽出時間が目標より{abs(time_diff):.0f}秒短い（チャネリングの可能性）")
+    elif time_diff > 8:
+        flags.append(f"抽出時間が目標より{time_diff:.0f}秒長い（挽き目が細すぎる可能性）")
 
-    # ── Flags (anomaly detection) ──────────────────────
+    if yield_ratio < 1.5:
+        flags.append(f"収率が低い（{yield_ratio:.2f}x）— ドーズ過多 or 抽出不足")
+    elif yield_ratio > 3.0:
+        flags.append(f"収率が高い（{yield_ratio:.2f}x）— 過抽出の可能性")
 
-    # Duration check
-    if duration is not None:
-        if duration < 20:
-            result["flags"].append(
-                f"抽出時間が短すぎます（{duration:.0f}秒）。グラインドを細かくするか、ドーズを増やしてください。"
-            )
-        elif duration > 35:
-            result["flags"].append(
-                f"抽出時間が長すぎます（{duration:.0f}秒）。グラインドを粗くするか、ドーズを減らしてください。"
-            )
+    if peak_pressure > 10.5:
+        flags.append(f"ピーク圧力が高い（{peak_pressure:.1f}bar）— パック詰まり")
+    elif avg_pressure < 6.0 and duration > 5:
+        flags.append(f"平均圧力が低い（{avg_pressure:.1f}bar）— 挽き目が粗い可能性")
 
-    # Brew ratio check
-    ratio = result["ratio"]
-    if ratio is not None:
-        if ratio < 1.5:
-            result["flags"].append(
-                f"収率が低いです（1:{ratio}）。抽出量を増やすか、グラインドを細かくしてください。"
-            )
-        elif ratio > 3.0:
-            result["flags"].append(
-                f"収率が高すぎます（1:{ratio}）。過抽出の可能性があります。"
-            )
-
-    # Peak pressure check
-    peak = result["peak_pressure_bar"]
-    if peak is not None:
-        if peak > 10:
-            result["flags"].append(
-                f"ピーク圧力が高すぎます（{peak} bar）。チャネリングの原因になります。"
-            )
-        elif peak < 6:
-            result["flags"].append(
-                f"ピーク圧力が低すぎます（{peak} bar）。グラインドを細かくするか、ドーズを増やしてください。"
-            )
-
-    # Temperature check
-    avg_temp = result["avg_temp_c"]
-    if avg_temp is not None:
-        if avg_temp < 88:
-            result["flags"].append(
-                f"平均抽出温度が低いです（{avg_temp}℃）。温度を上げてください。"
-            )
-        elif avg_temp > 96:
-            result["flags"].append(
-                f"平均抽出温度が高すぎます（{avg_temp}℃）。焦げた味の原因になります。"
-            )
-
-    return result
+    return ShotAnalysis(
+        duration=round(duration, 1),
+        dose_g=dose_g,
+        yield_g=round(actual_yield, 1),
+        yield_ratio=round(yield_ratio, 2),
+        avg_pressure=round(avg_pressure, 2),
+        peak_pressure=round(peak_pressure, 2),
+        avg_temp=round(avg_temp, 1),
+        avg_flow=round(avg_flow, 2),
+        flags=flags,
+    )

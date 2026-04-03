@@ -1,112 +1,98 @@
-import { useState, useEffect } from "react";
-import ShotChart from "../components/ShotChart";
-import type { TimeseriesPoint } from "../types";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { connectStatusWS, stopBrew, type MachineStatus } from "../api";
 
-// Generate mock realtime data
-function generateMockPoint(t: number): TimeseriesPoint {
-  const preinfusion = t < 5;
-  return {
-    t,
-    pressure: preinfusion
-      ? 2 + Math.random() * 1.5
-      : 8.5 + Math.sin(t * 0.3) * 0.8 + Math.random() * 0.3,
-    temp: 92.5 + Math.sin(t * 0.2) * 1.5 + Math.random() * 0.3,
-    weight: Math.max(0, (t - 3) * 1.2 + Math.random() * 0.5),
-    flow: preinfusion ? 0.5 + Math.random() * 0.3 : 1.8 + Math.sin(t * 0.5) * 0.4,
-  };
+interface DataPoint {
+  t: number;
+  pressure: number;
+  temp: number;
+  flow: number;
+  weight: number;
 }
 
 export default function Brewing() {
-  const [elapsed, setElapsed] = useState(0);
-  const [data, setData] = useState<TimeseriesPoint[]>([]);
-  const [running, setRunning] = useState(true);
+  const navigate = useNavigate();
+  const [data, setData] = useState<DataPoint[]>([]);
+  const [status, setStatus] = useState<MachineStatus | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!running) return;
-    const interval = setInterval(() => {
-      setElapsed((prev) => {
-        const next = prev + 1;
-        setData((d) => [...d, generateMockPoint(next)]);
-        if (next >= 30) {
-          setRunning(false);
-          clearInterval(interval);
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [running]);
+    const ws = connectStatusWS((msg) => {
+      setStatus(msg);
+      if (msg.mode === "brew") {
+        setData((prev) => [
+          ...prev,
+          {
+            t: msg.elapsed_time,
+            pressure: msg.pressure,
+            temp: msg.current_temp,
+            flow: msg.flow,
+            weight: msg.weight,
+          },
+        ]);
+      }
+      if (msg.mode === "standby" && data.length > 0) {
+        // 抽出完了 → 結果画面へ（最新ショットIDはAPI経由で取得）
+        setTimeout(() => navigate("/log"), 1500);
+      }
+    });
+    wsRef.current = ws;
+    return () => ws.close();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const latestPressure = data.length > 0 ? data[data.length - 1].pressure : null;
-  const latestTemp = data.length > 0 ? data[data.length - 1].temp : null;
-  const latestWeight = data.length > 0 ? data[data.length - 1].weight : null;
+  const handleStop = async () => {
+    try {
+      await stopBrew();
+    } catch { /* ignore */ }
+  };
 
   return (
-    <div style={{ color: "#fff" }}>
-      <h1>抽出中</h1>
+    <div>
+      <div className="flex justify-between items-center mb-24">
+        <h1>抽出中</h1>
+        <span className="badge badge-brew">BREWING</span>
+      </div>
 
-      {/* Live stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "1rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: "0.85rem" }}>経過時間</div>
-          <div style={{ fontSize: "2rem", fontWeight: "bold" }}>{elapsed}s</div>
+      <div className="status-grid">
+        <div className="stat">
+          <div className="value">{status?.elapsed_time?.toFixed(0) ?? "0"}s</div>
+          <div className="label">経過時間</div>
         </div>
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: "0.85rem" }}>圧力</div>
-          <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#e94560" }}>
-            {latestPressure?.toFixed(1) ?? "--"} bar
-          </div>
+        <div className="stat">
+          <div className="value">{status?.pressure?.toFixed(1) ?? "0"}</div>
+          <div className="label">圧力 (bar)</div>
         </div>
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: "0.85rem" }}>温度</div>
-          <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#0ea5e9" }}>
-            {latestTemp?.toFixed(1) ?? "--"}°C
-          </div>
+        <div className="stat">
+          <div className="value">{status?.current_temp?.toFixed(1) ?? "0"}°C</div>
+          <div className="label">温度</div>
         </div>
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1rem", textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: "0.85rem" }}>重量</div>
-          <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#22c55e" }}>
-            {latestWeight?.toFixed(1) ?? "--"} g
-          </div>
+        <div className="stat">
+          <div className="value">{status?.weight?.toFixed(1) ?? "0"}g</div>
+          <div className="label">重量</div>
         </div>
       </div>
 
-      {/* Real-time chart */}
-      <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1rem" }}>
-        <ShotChart data={data} height={400} />
+      <div className="card">
+        <h3>リアルタイムグラフ</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+            <XAxis dataKey="t" stroke="#999" label={{ value: "秒", position: "insideBottomRight" }} />
+            <YAxis yAxisId="pressure" stroke="#e94560" domain={[0, 12]} />
+            <YAxis yAxisId="weight" orientation="right" stroke="#2ecc71" domain={[0, 60]} />
+            <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid #444" }} />
+            <Legend />
+            <Line yAxisId="pressure" type="monotone" dataKey="pressure" stroke="#e94560" name="圧力(bar)" dot={false} strokeWidth={2} />
+            <Line yAxisId="pressure" type="monotone" dataKey="flow" stroke="#3498db" name="フロー(ml/s)" dot={false} />
+            <Line yAxisId="weight" type="monotone" dataKey="weight" stroke="#2ecc71" name="重量(g)" dot={false} strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
-      {/* Stop button */}
-      <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
-        {running ? (
-          <button
-            onClick={() => setRunning(false)}
-            style={{
-              padding: "1rem 3rem",
-              borderRadius: 8,
-              border: "none",
-              background: "#ef4444",
-              color: "#fff",
-              fontSize: "1.2rem",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            ストップ
-          </button>
-        ) : (
-          <p style={{ color: "#22c55e", fontSize: "1.2rem" }}>
-            抽出完了 - {elapsed}秒 / {latestWeight?.toFixed(1)}g
-          </p>
-        )}
-      </div>
+      <button className="btn btn-danger" onClick={handleStop} style={{ width: "100%", fontSize: 16, padding: 14 }}>
+        抽出停止
+      </button>
     </div>
   );
 }

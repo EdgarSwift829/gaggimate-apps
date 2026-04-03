@@ -1,152 +1,101 @@
-import { useState } from "react";
-import RecipeCard from "../components/RecipeCard";
-import type { Recipe } from "../types";
+import { useEffect, useState } from "react";
+import { getRecipes, toggleFavorite, customizeRecipe, type Recipe } from "../api";
 
-const mockRecipes: Recipe[] = [
-  {
-    id: 1, name: "Classic Espresso 9bar",
-    json: '{"preinfusion":{"pressure":3,"duration":5},"extraction":{"pressure":9,"duration":25}}',
-    version: 1, is_favorite: true, avg_score: 4.2, use_count: 15, created_at: "2025-01-01",
-  },
-  {
-    id: 2, name: "Turbo Shot",
-    json: '{"preinfusion":{"pressure":2,"duration":3},"extraction":{"pressure":6,"duration":15}}',
-    version: 2, is_favorite: false, avg_score: 3.8, use_count: 8, created_at: "2025-01-15",
-  },
-  {
-    id: 3, name: "Blooming Espresso",
-    json: '{"bloom":{"pressure":2,"duration":8},"extraction":{"pressure":9,"duration":22}}',
-    version: 1, is_favorite: true, avg_score: 4.5, use_count: 22, created_at: "2025-02-01",
-  },
-  {
-    id: 4, name: "Lungo Profile",
-    json: '{"preinfusion":{"pressure":3,"duration":5},"extraction":{"pressure":7,"duration":35}}',
-    version: 3, is_favorite: false, avg_score: 3.5, use_count: 5, created_at: "2025-02-10",
-  },
-  {
-    id: 5, name: "Low Pressure Sweet",
-    json: '{"preinfusion":{"pressure":2,"duration":10},"extraction":{"pressure":6,"duration":30}}',
-    version: 1, is_favorite: false, avg_score: 4.0, use_count: 12, created_at: "2025-03-01",
-  },
-];
+export default function RecipesPage() {
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [sort, setSort] = useState("created_at");
+  const [favOnly, setFavOnly] = useState(false);
+  const [customizeText, setCustomizeText] = useState("");
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-type SortKey = "avg_score" | "use_count" | "created_at" | "name";
+  const load = () => getRecipes(sort, favOnly).then(setRecipes).catch(() => {});
 
-export default function Recipes() {
-  const [recipes, setRecipes] = useState<Recipe[]>(mockRecipes);
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<SortKey>("avg_score");
-  const [customizeRequest, setCustomizeRequest] = useState("");
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  useEffect(() => { load(); }, [sort, favOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = recipes
-    .filter((r) => !showFavoritesOnly || r.is_favorite)
-    .sort((a, b) => {
-      if (sortBy === "name") return a.name.localeCompare(b.name);
-      const av = a[sortBy] ?? 0;
-      const bv = b[sortBy] ?? 0;
-      return (bv as number) - (av as number);
-    });
+  const handleFav = async (id: number) => {
+    await toggleFavorite(id);
+    load();
+  };
 
-  const handleToggleFavorite = (id: number) => {
-    setRecipes((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, is_favorite: !r.is_favorite } : r))
-    );
+  const handleCustomize = async () => {
+    if (!customizeText.trim()) return;
+    setLoading(true);
+    try {
+      const res = await customizeRecipe(customizeText);
+      setSuggestion(res.suggestion);
+    } catch {
+      setSuggestion("LLM接続エラー");
+    }
+    setLoading(false);
   };
 
   return (
-    <div style={{ color: "#fff" }}>
-      <h1>レシピ</h1>
+    <div>
+      <h1 className="mb-24">レシピ</h1>
 
-      {/* Controls */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={showFavoritesOnly}
-            onChange={(e) => setShowFavoritesOnly(e.target.checked)}
-          />
-          お気に入りのみ
-        </label>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortKey)}
-          style={{
-            padding: "0.5rem",
-            borderRadius: 6,
-            border: "1px solid #333",
-            background: "#16213e",
-            color: "#fff",
-          }}
-        >
+      <div className="flex gap-16 items-center mb-16">
+        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ padding: "6px 12px", background: "var(--surface)", color: "var(--text)", border: "1px solid #444", borderRadius: "var(--radius)" }}>
+          <option value="created_at">作成日順</option>
           <option value="avg_score">評価順</option>
           <option value="use_count">使用頻度順</option>
-          <option value="created_at">作成日順</option>
-          <option value="name">名前順</option>
         </select>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+          <input type="checkbox" checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)} />
+          お気に入りのみ
+        </label>
       </div>
 
-      {/* Recipe Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: "1rem",
-          marginBottom: "2rem",
-        }}
-      >
-        {filtered.map((r) => (
-          <RecipeCard
-            key={r.id}
-            recipe={r}
-            onToggleFavorite={handleToggleFavorite}
-            onSelect={setSelectedRecipe}
-          />
-        ))}
+      <div className="card">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>レシピ名</th>
+              <th>バージョン</th>
+              <th>平均スコア</th>
+              <th>使用回数</th>
+              <th>作成日</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recipes.length === 0 && (
+              <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)" }}>レシピがありません</td></tr>
+            )}
+            {recipes.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  <span className={`fav ${r.is_favorite ? "on" : "off"}`} onClick={() => handleFav(r.id)}>
+                    ★
+                  </span>
+                </td>
+                <td>{r.name}</td>
+                <td>v{r.version}</td>
+                <td>{r.avg_score?.toFixed(1) ?? "-"}</td>
+                <td>{r.use_count}</td>
+                <td>{r.created_at?.slice(0, 10)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Selected recipe detail */}
-      {selectedRecipe && (
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1.5rem", marginBottom: "1.5rem" }}>
-          <h2 style={{ marginTop: 0 }}>{selectedRecipe.name} - レシピJSON</h2>
-          <pre style={{ background: "#0f0f23", padding: "1rem", borderRadius: 6, overflow: "auto" }}>
-            {JSON.stringify(JSON.parse(selectedRecipe.json), null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {/* LLM Customization */}
-      <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "1.5rem" }}>
-        <h2 style={{ marginTop: 0 }}>AIレシピカスタマイズ</h2>
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <input
-            type="text"
-            value={customizeRequest}
-            onChange={(e) => setCustomizeRequest(e.target.value)}
-            placeholder="例: 甘みをもっと出したい、このエチオピアに合うレシピ作って..."
-            style={{
-              flex: 1,
-              padding: "0.75rem",
-              borderRadius: 6,
-              border: "1px solid #333",
-              background: "#16213e",
-              color: "#fff",
-            }}
+      {/* LLMカスタマイズ */}
+      <div className="card">
+        <h3>LLMにレシピカスタマイズを依頼</h3>
+        <div className="form-group">
+          <textarea
+            value={customizeText}
+            onChange={(e) => setCustomizeText(e.target.value)}
+            placeholder='例: 「このエチオピアに合うレシピ作って」「甘みをもっと出したい」'
           />
-          <button
-            style={{
-              padding: "0.75rem 1.5rem",
-              borderRadius: 6,
-              border: "none",
-              background: "#e94560",
-              color: "#fff",
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            提案を取得
-          </button>
         </div>
+        <button className="btn btn-primary" onClick={handleCustomize} disabled={loading}>
+          {loading ? "生成中..." : "提案を生成"}
+        </button>
+        {suggestion && (
+          <div className="suggestion" style={{ marginTop: 16 }}>{suggestion}</div>
+        )}
       </div>
     </div>
   );

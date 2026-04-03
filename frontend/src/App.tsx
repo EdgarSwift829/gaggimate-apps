@@ -1,25 +1,36 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Layout from "./components/Layout";
+import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import Home from "./pages/Home";
 import Brewing from "./pages/Brewing";
-import PostShot from "./pages/PostShot";
-import Recipes from "./pages/Recipes";
-import Logs from "./pages/Logs";
-import Settings from "./pages/Settings";
+import ShotResult from "./pages/ShotResult";
+import RecipesPage from "./pages/Recipes";
+import LogPage from "./pages/Log";
+import SettingsPage from "./pages/Settings";
+import "./App.css";
 
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/brewing" element={<Brewing />} />
-          <Route path="/post-shot" element={<PostShot />} />
-          <Route path="/recipes" element={<Recipes />} />
-          <Route path="/logs" element={<Logs />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-      </Routes>
+      <div className="app">
+        <nav className="sidebar">
+          <h2>GaggiMate</h2>
+          <NavLink to="/">ホーム</NavLink>
+          <NavLink to="/recipes">レシピ</NavLink>
+          <NavLink to="/log">ログ</NavLink>
+          <NavLink to="/settings">設定</NavLink>
+        </nav>
+        <main className="content">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/brewing" element={<Brewing />} />
+            <Route path="/shot/:id" element={<ShotResult />} />
+            <Route path="/recipes" element={<RecipesPage />} />
+            <Route path="/log" element={<LogPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </main>
+      </div>
     </BrowserRouter>
   );
 }
+
+export default App;

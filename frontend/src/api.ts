@@ -1,78 +1,104 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
+const API_BASE = "http://localhost:8000";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
   });
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
-  }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 
-// ── Shots ──────────────────────────────────────────
-export const getShots = (params?: { bean_id?: number; recipe_id?: number }) => {
-  const qs = new URLSearchParams();
-  if (params?.bean_id) qs.set("bean_id", String(params.bean_id));
-  if (params?.recipe_id) qs.set("recipe_id", String(params.recipe_id));
-  const q = qs.toString();
-  return request<any[]>(`/shots${q ? `?${q}` : ""}`);
-};
+// --- Types ---
+export interface Shot {
+  id: number;
+  timestamp: string;
+  duration: number | null;
+  dose_g: number | null;
+  yield_g: number | null;
+  yield_ratio: number | null;
+  score: number | null;
+  feedback: string | null;
+  bean_name: string | null;
+  recipe_name: string | null;
+}
 
-export const getShot = (id: number) => request<any>(`/shots/${id}`);
+export interface TimeseriesPoint {
+  t: number;
+  pressure: number | null;
+  temp: number | null;
+  weight: number | null;
+  flow: number | null;
+}
 
-export const createShot = (data: any) =>
-  request<any>("/shots", { method: "POST", body: JSON.stringify(data) });
+export interface Bean {
+  id: number;
+  name: string;
+  roaster: string | null;
+  roast_date: string | null;
+  origin: string | null;
+  notes: string | null;
+}
 
-export const updateFeedback = (id: number, data: any) =>
-  request<any>(`/shots/${id}/feedback`, { method: "PUT", body: JSON.stringify(data) });
+export interface Recipe {
+  id: number;
+  name: string;
+  json: string;
+  version: number;
+  is_favorite: number;
+  avg_score: number | null;
+  use_count: number;
+  created_at: string;
+}
 
-// ── Beans ──────────────────────────────────────────
-export const getBeans = (q?: string) =>
-  request<any[]>(`/beans${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export interface MachineStatus {
+  tp: string;
+  current_temp: number;
+  target_temp: number;
+  pressure: number;
+  flow: number;
+  mode: string;
+  weight: number;
+  phase: string;
+  elapsed_time: number;
+  pumping: boolean;
+}
 
-export const createBean = (data: any) =>
-  request<any>("/beans", { method: "POST", body: JSON.stringify(data) });
+// --- Shots ---
+export const getShots = (limit = 50) => fetchJSON<Shot[]>(`/api/shots?limit=${limit}`);
+export const getShot = (id: number) => fetchJSON<Shot & { timeseries: TimeseriesPoint[]; grind: Record<string, number> | null }>(`/api/shots/${id}`);
+export const getTimeseries = (id: number) => fetchJSON<TimeseriesPoint[]>(`/api/shots/${id}/timeseries`);
+export const saveFeedback = (shotId: number, data: Record<string, unknown>) =>
+  fetchJSON(`/api/shots/${shotId}/feedback`, { method: "POST", body: JSON.stringify(data) });
 
-// ── Recipes ────────────────────────────────────────
-export const getRecipes = (params?: {
-  favorites_only?: boolean;
-  sort_by?: string;
-  bean_id?: number;
-}) => {
-  const qs = new URLSearchParams();
-  if (params?.favorites_only) qs.set("favorites_only", "true");
-  if (params?.sort_by) qs.set("sort_by", params.sort_by);
-  if (params?.bean_id) qs.set("bean_id", String(params.bean_id));
-  const q = qs.toString();
-  return request<any[]>(`/recipes${q ? `?${q}` : ""}`);
-};
+// --- Beans ---
+export const getBeans = () => fetchJSON<Bean[]>("/api/beans");
+export const createBean = (data: Partial<Bean>) =>
+  fetchJSON<Bean>("/api/beans", { method: "POST", body: JSON.stringify(data) });
 
-export const createRecipe = (data: any) =>
-  request<any>("/recipes", { method: "POST", body: JSON.stringify(data) });
-
+// --- Recipes ---
+export const getRecipes = (sort = "created_at", favOnly = false) =>
+  fetchJSON<Recipe[]>(`/api/recipes?sort=${sort}&favorites_only=${favOnly}`);
 export const toggleFavorite = (id: number) =>
-  request<any>(`/recipes/${id}/favorite`, { method: "POST" });
-
-// ── LLM ────────────────────────────────────────────
-export const getSuggestion = (shotId: number) =>
-  request<any>("/llm/suggest", {
+  fetchJSON(`/api/recipes/${id}/favorite`, { method: "PATCH" });
+export const customizeRecipe = (request: string, baseId?: number) =>
+  fetchJSON<{ suggestion: string }>("/api/recipes/customize", {
     method: "POST",
-    body: JSON.stringify({ shot_id: shotId }),
+    body: JSON.stringify({ request, base_recipe_id: baseId }),
   });
 
-export const getSuggestions = (shotId: number) =>
-  request<any[]>(`/llm/suggestions/${shotId}`);
+// --- Machine ---
+export const getHealth = () => fetchJSON<{ status: string; gaggimate_connected: boolean }>("/api/health");
+export const startBrew = () => fetchJSON("/api/machine/brew/start", { method: "POST" });
+export const stopBrew = () => fetchJSON("/api/machine/brew/stop", { method: "POST" });
 
-export const getRecipeSuggestion = (data: any) =>
-  request<any>("/llm/recipe", { method: "POST", body: JSON.stringify(data) });
-
-// ── GaggiMate ──────────────────────────────────────
-export const getMachineState = () => request<any>("/gaggimate/state");
-
-export const brewCommand = (action: string, recipe_id?: number) =>
-  request<any>("/gaggimate/brew", {
-    method: "POST",
-    body: JSON.stringify({ action, recipe_id }),
-  });
+// --- WebSocket ---
+export function connectStatusWS(onMessage: (data: MachineStatus) => void): WebSocket {
+  const ws = new WebSocket("ws://localhost:8000/ws/status");
+  ws.onmessage = (e) => {
+    try {
+      onMessage(JSON.parse(e.data));
+    } catch { /* ignore */ }
+  };
+  return ws;
+}

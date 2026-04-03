@@ -1,160 +1,207 @@
-"""Shot log CRUD and feedback API."""
+"""ショットログ REST API."""
 
-from fastapi import APIRouter, Depends, HTTPException
-import aiosqlite
+from __future__ import annotations
 
-from ..database import get_db
-from ..models import (
-    ShotCreate, ShotFeedback, ShotOut, ShotDetail,
-    TimeseriesPoint, GrindSettingsOut,
-)
+import json
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
-router = APIRouter(prefix="/shots", tags=["shots"])
+from app.database import get_db
+from app.services.analysis import analyze_shot
+from app.services.llm import get_improvement_suggestion
 
-
-@router.get("", response_model=list[ShotOut])
-async def list_shots(
-    bean_id: int | None = None,
-    recipe_id: int | None = None,
-    limit: int = 50,
-    offset: int = 0,
-    db: aiosqlite.Connection = Depends(get_db),
-):
-    """List shots with optional filters."""
-    query = "SELECT * FROM shots WHERE 1=1"
-    params: list = []
-    if bean_id is not None:
-        query += " AND bean_id = ?"
-        params.append(bean_id)
-    if recipe_id is not None:
-        query += " AND recipe_id = ?"
-        params.append(recipe_id)
-    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-
-    cursor = await db.execute(query, params)
-    rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+router = APIRouter(prefix="/api/shots", tags=["shots"])
 
 
-@router.get("/{shot_id}", response_model=ShotDetail)
-async def get_shot(shot_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    """Get shot with timeseries and grind settings."""
-    cursor = await db.execute("SELECT * FROM shots WHERE id = ?", [shot_id])
-    shot = await cursor.fetchone()
-    if not shot:
-        raise HTTPException(404, "Shot not found")
-
-    result = dict(shot)
-
-    # Timeseries
-    cursor = await db.execute(
-        "SELECT t, pressure, temp, weight, flow FROM shot_timeseries WHERE shot_id = ? ORDER BY t",
-        [shot_id],
-    )
-    result["timeseries"] = [dict(r) for r in await cursor.fetchall()]
-
-    # Grind settings
-    cursor = await db.execute(
-        "SELECT * FROM grind_settings WHERE shot_id = ?", [shot_id]
-    )
-    grind = await cursor.fetchone()
-    result["grind"] = dict(grind) if grind else None
-
-    return result
+class ShotFeedback(BaseModel):
+    bean_id: int | None = None
+    bean_name: str | None = None
+    dose_g: float = 18.0
+    yield_g: float | None = None
+    clicks: int | None = None
+    score: int = Field(ge=1, le=5)
+    feedback: str = ""
 
 
-@router.post("", response_model=ShotOut)
-async def create_shot(shot: ShotCreate, db: aiosqlite.Connection = Depends(get_db)):
-    """Create a new shot log entry."""
-    cursor = await db.execute(
-        """INSERT INTO shots (duration, recipe_id, bean_id, score, feedback, yield_g)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        [shot.duration, shot.recipe_id, shot.bean_id, shot.score, shot.feedback, shot.yield_g],
-    )
-    shot_id = cursor.lastrowid
+class ShotResponse(BaseModel):
+    id: int
+    timestamp: str
+    duration: float | None
+    dose_g: float | None
+    yield_g: float | None
+    yield_ratio: float | None
+    score: int | None
+    feedback: str | None
+    recipe_name: str | None = None
+    bean_name: str | None = None
 
-    # Insert timeseries
-    if shot.timeseries:
-        await db.executemany(
-            "INSERT INTO shot_timeseries (shot_id, t, pressure, temp, weight, flow) VALUES (?, ?, ?, ?, ?, ?)",
-            [(shot_id, p.t, p.pressure, p.temp, p.weight, p.flow) for p in shot.timeseries],
+
+@router.get("")
+async def list_shots(limit: int = 50, offset: int = 0, bean_id: int | None = None):
+    """ショット一覧取得."""
+    db = await get_db()
+    try:
+        query = """
+            SELECT s.*, b.name as bean_name, r.name as recipe_name
+            FROM shots s
+            LEFT JOIN beans b ON s.bean_id = b.id
+            LEFT JOIN recipes r ON s.recipe_id = r.id
+        """
+        params: list = []
+        if bean_id is not None:
+            query += " WHERE s.bean_id = ?"
+            params.append(bean_id)
+        query += " ORDER BY s.timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        rows = await db.execute(query, params)
+        results = await rows.fetchall()
+        return [dict(r) for r in results]
+    finally:
+        await db.close()
+
+
+@router.get("/{shot_id}")
+async def get_shot(shot_id: int):
+    """ショット詳細取得（時系列データ含む）."""
+    db = await get_db()
+    try:
+        row = await db.execute(
+            """SELECT s.*, b.name as bean_name, r.name as recipe_name
+               FROM shots s
+               LEFT JOIN beans b ON s.bean_id = b.id
+               LEFT JOIN recipes r ON s.recipe_id = r.id
+               WHERE s.id = ?""",
+            [shot_id],
         )
+        shot = await row.fetchone()
+        if not shot:
+            raise HTTPException(404, "Shot not found")
 
-    # Insert grind settings
-    if shot.grind:
+        ts_rows = await db.execute(
+            "SELECT t, pressure, temp, weight, flow FROM shot_timeseries WHERE shot_id = ? ORDER BY t",
+            [shot_id],
+        )
+        timeseries = [dict(r) for r in await ts_rows.fetchall()]
+
+        grind_row = await db.execute(
+            "SELECT clicks, dose_g, yield_g FROM grind_settings WHERE shot_id = ?",
+            [shot_id],
+        )
+        grind = await grind_row.fetchone()
+
+        return {
+            **dict(shot),
+            "timeseries": timeseries,
+            "grind": dict(grind) if grind else None,
+        }
+    finally:
+        await db.close()
+
+
+@router.post("/{shot_id}/feedback")
+async def save_feedback(shot_id: int, body: ShotFeedback):
+    """フィードバック保存 + LLM改善提案生成."""
+    db = await get_db()
+    try:
+        # ショット存在確認
+        row = await db.execute("SELECT id FROM shots WHERE id = ?", [shot_id])
+        if not await row.fetchone():
+            raise HTTPException(404, "Shot not found")
+
+        # 豆の処理（新規作成 or 既存参照）
+        bean_id = body.bean_id
+        if not bean_id and body.bean_name:
+            existing = await db.execute("SELECT id FROM beans WHERE name = ?", [body.bean_name])
+            found = await existing.fetchone()
+            if found:
+                bean_id = found["id"]
+            else:
+                cursor = await db.execute("INSERT INTO beans (name) VALUES (?)", [body.bean_name])
+                bean_id = cursor.lastrowid
+
+        # ショット更新
         await db.execute(
-            "INSERT INTO grind_settings (shot_id, clicks, dose_g, yield_g) VALUES (?, ?, ?, ?)",
-            [shot_id, shot.grind.clicks, shot.grind.dose_g, shot.grind.yield_g],
+            """UPDATE shots SET bean_id = ?, dose_g = ?, yield_g = ?,
+               yield_ratio = ?, score = ?, feedback = ? WHERE id = ?""",
+            [bean_id, body.dose_g, body.yield_g,
+             round(body.yield_g / body.dose_g, 2) if body.yield_g and body.dose_g else None,
+             body.score, body.feedback, shot_id],
         )
 
-    # Update recipe use_count
-    if shot.recipe_id:
+        # グラインド情報保存
+        if body.clicks is not None:
+            await db.execute(
+                """INSERT INTO grind_settings (shot_id, clicks, dose_g, yield_g)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(shot_id) DO UPDATE SET clicks=?, dose_g=?, yield_g=?""",
+                [shot_id, body.clicks, body.dose_g, body.yield_g,
+                 body.clicks, body.dose_g, body.yield_g],
+            )
+
+        await db.commit()
+
+        # 時系列データ取得 → 数値分析 → LLM提案
+        ts_rows = await db.execute(
+            "SELECT t, pressure, temp, weight, flow FROM shot_timeseries WHERE shot_id = ? ORDER BY t",
+            [shot_id],
+        )
+        timeseries = [dict(r) for r in await ts_rows.fetchall()]
+        analysis = analyze_shot(timeseries, dose_g=body.dose_g, yield_g=body.yield_g)
+
+        # 同じ豆の過去ショットサマリー
+        past_summary = None
+        if bean_id:
+            past_rows = await db.execute(
+                """SELECT duration, yield_ratio, score, feedback
+                   FROM shots WHERE bean_id = ? AND id != ? ORDER BY timestamp DESC LIMIT 5""",
+                [bean_id, shot_id],
+            )
+            past = [dict(r) for r in await past_rows.fetchall()]
+            if past:
+                past_summary = "\n".join(
+                    f"- {p['duration']}秒 / {p['yield_ratio']}x / ★{p['score']} / {p['feedback']}"
+                    for p in past if p["duration"]
+                )
+
+        suggestion = await get_improvement_suggestion(
+            analysis=analysis,
+            feedback=body.feedback,
+            grind_clicks=body.clicks,
+            bean_info=body.bean_name,
+            past_shots_summary=past_summary,
+        )
+
+        # LLM提案を保存
         await db.execute(
-            "UPDATE recipes SET use_count = use_count + 1 WHERE id = ?",
-            [shot.recipe_id],
+            "INSERT INTO llm_suggestions (shot_id, prompt, response, model) VALUES (?, ?, ?, ?)",
+            [shot_id, body.feedback, suggestion, "local-model"],
         )
+        await db.commit()
 
-    await db.commit()
+        return {
+            "shot_id": shot_id,
+            "analysis": {
+                "duration": analysis.duration,
+                "yield_ratio": analysis.yield_ratio,
+                "avg_pressure": analysis.avg_pressure,
+                "peak_pressure": analysis.peak_pressure,
+                "flags": analysis.flags,
+            },
+            "suggestion": suggestion,
+        }
+    finally:
+        await db.close()
 
-    cursor = await db.execute("SELECT * FROM shots WHERE id = ?", [shot_id])
-    return dict(await cursor.fetchone())
 
-
-@router.put("/{shot_id}/feedback", response_model=ShotOut)
-async def update_feedback(
-    shot_id: int,
-    fb: ShotFeedback,
-    db: aiosqlite.Connection = Depends(get_db),
-):
-    """Update shot feedback (bean, score, grind, feedback text)."""
-    cursor = await db.execute("SELECT * FROM shots WHERE id = ?", [shot_id])
-    if not await cursor.fetchone():
-        raise HTTPException(404, "Shot not found")
-
-    updates = []
-    params = []
-    if fb.bean_id is not None:
-        updates.append("bean_id = ?")
-        params.append(fb.bean_id)
-    if fb.score is not None:
-        updates.append("score = ?")
-        params.append(fb.score)
-    if fb.feedback is not None:
-        updates.append("feedback = ?")
-        params.append(fb.feedback)
-
-    if updates:
-        params.append(shot_id)
-        await db.execute(
-            f"UPDATE shots SET {', '.join(updates)} WHERE id = ?", params
+@router.get("/{shot_id}/timeseries")
+async def get_timeseries(shot_id: int):
+    """時系列データ取得（グラフ表示用）."""
+    db = await get_db()
+    try:
+        rows = await db.execute(
+            "SELECT t, pressure, temp, weight, flow FROM shot_timeseries WHERE shot_id = ? ORDER BY t",
+            [shot_id],
         )
-
-    if fb.grind:
-        await db.execute("DELETE FROM grind_settings WHERE shot_id = ?", [shot_id])
-        await db.execute(
-            "INSERT INTO grind_settings (shot_id, clicks, dose_g, yield_g) VALUES (?, ?, ?, ?)",
-            [shot_id, fb.grind.clicks, fb.grind.dose_g, fb.grind.yield_g],
-        )
-
-    # Update recipe avg_score
-    await db.execute(
-        """UPDATE recipes SET avg_score = (
-               SELECT AVG(score) FROM shots WHERE recipe_id = recipes.id AND score IS NOT NULL
-           ) WHERE id IN (SELECT recipe_id FROM shots WHERE id = ?)""",
-        [shot_id],
-    )
-
-    await db.commit()
-
-    cursor = await db.execute("SELECT * FROM shots WHERE id = ?", [shot_id])
-    return dict(await cursor.fetchone())
-
-
-@router.delete("/{shot_id}")
-async def delete_shot(shot_id: int, db: aiosqlite.Connection = Depends(get_db)):
-    cursor = await db.execute("DELETE FROM shots WHERE id = ?", [shot_id])
-    if cursor.rowcount == 0:
-        raise HTTPException(404, "Shot not found")
-    await db.commit()
-    return {"ok": True}
+        return [dict(r) for r in await rows.fetchall()]
+    finally:
+        await db.close()

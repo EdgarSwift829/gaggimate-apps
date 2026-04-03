@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS llm_suggestions (
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_llm_shot ON llm_suggestions(shot_id);
+
+-- Web Push購読情報
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint          TEXT NOT NULL UNIQUE,
+    subscription_json TEXT NOT NULL,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 

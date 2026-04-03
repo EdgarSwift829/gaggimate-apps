@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { getHealth } from "../api";
 
+const API_BASE = "http://localhost:8000";
+
 interface LLMTestResult {
   connected: boolean;
   base_url: string;
@@ -9,25 +11,116 @@ interface LLMTestResult {
   error?: string;
 }
 
+async function subscribePush(): Promise<boolean> {
+  try {
+    // VAPID公開鍵取得
+    const keyRes = await fetch(`${API_BASE}/api/notifications/vapid-key`);
+    const keyData = await keyRes.json();
+    if (!keyData.available) return false;
+
+    // Service Worker登録
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+
+    // Push購読
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(keyData.public_key) as BufferSource,
+    });
+
+    // サーバーに購読情報を送信
+    const subJson = sub.toJSON();
+    await fetch(`${API_BASE}/api/notifications/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: subJson.endpoint,
+        keys: subJson.keys,
+      }),
+    });
+    return true;
+  } catch (e) {
+    console.error("Push subscription failed:", e);
+    return false;
+  }
+}
+
+async function unsubscribePush(): Promise<boolean> {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return true;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return true;
+
+    const subJson = sub.toJSON();
+    await fetch(`${API_BASE}/api/notifications/unsubscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: subJson.endpoint,
+        keys: subJson.keys,
+      }),
+    });
+    await sub.unsubscribe();
+    return true;
+  } catch (e) {
+    console.error("Push unsubscribe failed:", e);
+    return false;
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
+}
+
 export default function SettingsPage() {
   const [health, setHealth] = useState<{ status: string; gaggimate_connected: boolean } | null>(null);
   const [llmResult, setLlmResult] = useState<LLMTestResult | null>(null);
   const [llmTesting, setLlmTesting] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth(null));
+    // 既存のPush購読状態を確認
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistration().then(async (reg) => {
+        if (reg) {
+          const sub = await reg.pushManager.getSubscription();
+          setPushEnabled(!!sub);
+        }
+      });
+    }
   }, []);
 
   const testLLM = async () => {
     setLlmTesting(true);
     try {
-      const res = await fetch("http://localhost:8000/api/llm/test");
+      const res = await fetch(`${API_BASE}/api/llm/test`);
       const data = await res.json();
       setLlmResult(data);
     } catch {
       setLlmResult({ connected: false, base_url: "", error: "バックエンドに接続できません" });
     }
     setLlmTesting(false);
+  };
+
+  const handlePushToggle = async () => {
+    setPushLoading(true);
+    if (pushEnabled) {
+      const ok = await unsubscribePush();
+      if (ok) setPushEnabled(false);
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        const ok = await subscribePush();
+        if (ok) setPushEnabled(true);
+      }
+    }
+    setPushLoading(false);
   };
 
   return (
@@ -112,15 +205,17 @@ export default function SettingsPage() {
         <h3>通知設定</h3>
         <div className="form-group">
           <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-            <input type="checkbox" />
-            抽出完了時にWeb Push通知
+            <input
+              type="checkbox"
+              checked={pushEnabled}
+              onChange={handlePushToggle}
+              disabled={pushLoading}
+            />
+            {pushLoading ? "処理中..." : "Web Push通知（抽出完了・LLM提案完了）"}
           </label>
-        </div>
-        <div className="form-group">
-          <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-            <input type="checkbox" />
-            LLM提案完了時に通知
-          </label>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+            {pushEnabled ? "通知ON — ブラウザを閉じても通知を受信します" : "通知OFF"}
+          </div>
         </div>
       </div>
     </div>

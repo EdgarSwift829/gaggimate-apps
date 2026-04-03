@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 
 from app.database import get_db
 from app.services.gaggimate_ws import gaggimate_client
+from app.services.notification import notify_shot_complete
 
 logger = logging.getLogger("webhook")
 router = APIRouter(tags=["webhook"])
@@ -75,6 +76,12 @@ async def receive_webhook(request: Request):
         # WebSocketバッファをクリア（次のbrewに備える）
         gaggimate_client.clear_brew_buffer()
         logger.info("Shot %d saved with %d timeseries points", shot_id, len(pressure_pts))
+
+        # Push通知（非同期、失敗しても処理続行）
+        try:
+            await notify_shot_complete(shot_id, payload.get("duration"))
+        except Exception as e:
+            logger.warning("Push notification failed: %s", e)
 
         return {"ok": True, "shot_id": shot_id}
     finally:

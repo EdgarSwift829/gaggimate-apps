@@ -20,50 +20,50 @@
 
 ### 1.2 バックエンド（Python / FastAPI）
 
-- [ ] プロジェクト初期化（pyproject.toml / uv or poetry）
-- [ ] SQLiteスキーマ実装（shots / shot_timeseries / beans / grind_settings / recipes / llm_suggestions）
+- [x] プロジェクト初期化（pyproject.toml）
+- [x] SQLiteスキーマ実装（shots / shot_timeseries / beans / grind_settings / recipes / llm_suggestions）
 - [ ] DB マイグレーション基盤（Alembic）
-- [ ] FastAPI サーバー雛形
-  - [ ] WebSocket クライアント（GaggiMate接続・データ受信）
+- [x] FastAPI サーバー雛形
+  - [x] WebSocket クライアント（GaggiMate接続・データ受信）
   - [ ] MQTT 購読・バッファリング
-  - [ ] Webhook エンドポイント（ショット終了受信）
-  - [ ] ショット境界検知・自動保存ロジック
-- [ ] 数値分析モジュール
-  - [ ] 収率計算（yield / dose）
-  - [ ] 抽出時間・圧力カーブ分析
-  - [ ] 異常検知（目標との乖離フラグ）
-- [ ] LLM連携モジュール
-  - [ ] LM Studio クライアント（OpenAI互換API）
-  - [ ] 改善提案生成エンドポイント
-  - [ ] レシピカスタマイズ生成エンドポイント
+  - [x] Webhook エンドポイント（ショット終了受信）
+  - [x] ショット境界検知・自動保存ロジック
+- [x] 数値分析モジュール
+  - [x] 収率計算（yield / dose）
+  - [x] 抽出時間・圧力カーブ分析
+  - [x] 異常検知（目標との乖離フラグ）
+- [x] LLM連携モジュール
+  - [x] LM Studio クライアント（OpenAI互換API）
+  - [x] 改善提案生成エンドポイント
+  - [x] レシピカスタマイズ生成エンドポイント
   - [ ] プロンプトテンプレート管理
-- [ ] REST API
-  - [ ] ショットログ CRUD
-  - [ ] 豆マスター CRUD
-  - [ ] レシピ一覧・お気に入り・ソート
-  - [ ] LLM提案履歴取得
-- [ ] シミュレーターとの結合テスト
+- [x] REST API
+  - [x] ショットログ CRUD
+  - [x] 豆マスター CRUD
+  - [x] レシピ一覧・お気に入り・ソート
+  - [x] LLM提案履歴取得
+- [x] シミュレーターとの結合テスト
 
 ### 1.3 フロントエンド（React + Vite）
 
-- [ ] プロジェクト初期化（React + Vite + TypeScript）
+- [x] プロジェクト初期化（React + Vite + TypeScript）
 - [ ] UIコンポーネントライブラリ選定（shadcn/ui or MUI）
-- [ ] ルーティング設定（React Router）
-- [ ] 画面実装（モックデータ）
-  - [ ] ① ホーム（温度・圧力・状態 / レシピ選択 / スタート）
-  - [ ] ② 抽出中（リアルタイムグラフ / タイマー / ストップ）
-  - [ ] ③ 抽出後（結果サマリー / フィードバック入力フォーム）
-  - [ ] ④ 改善提案（LLM提案テキスト / レシピ調整案）
-  - [ ] ⑤ レシピ（一覧 / お気に入り / ソート / カスタマイズ依頼）
-  - [ ] ⑥ ログ（ショット一覧 / 豆別フィルター / 圧力カーブ比較）
-  - [ ] ⑦ 設定（接続設定 / LM Studio / 通知）
-- [ ] グラフライブラリ導入（Recharts or Chart.js）
-- [ ] WebSocket接続ロジック（シミュレーター対応）
-- [ ] API クライアント（FastAPIとの通信）
+- [x] ルーティング設定（React Router）
+- [x] 画面実装
+  - [x] ① ホーム（温度・圧力・状態 / レシピ選択 / スタート）
+  - [x] ② 抽出中（リアルタイムグラフ / タイマー / ストップ）
+  - [x] ③ 抽出後（結果サマリー / フィードバック入力フォーム）
+  - [x] ④ 改善提案（LLM提案テキスト — ③に統合）
+  - [x] ⑤ レシピ（一覧 / お気に入り / ソート / カスタマイズ依頼）
+  - [x] ⑥ ログ（ショット一覧 / 豆別フィルター）
+  - [x] ⑦ 設定（接続設定 / LM Studio）
+- [x] グラフライブラリ導入（Recharts）
+- [x] WebSocket接続ロジック（シミュレーター対応）
+- [x] API クライアント（FastAPIとの通信）
 
 ### 1.4 開発環境・インフラ
 
-- [ ] monorepo構成整理（backend / frontend / simulator）
+- [x] monorepo構成整理（backend / frontend / simulator）
 - [ ] Docker Compose（FastAPI + シミュレーター）
 - [ ] LM Studio 導入・Qwen2.5:14B ダウンロード・動作確認
 - [ ] CI/CD 基盤（GitHub Actions: lint + test）

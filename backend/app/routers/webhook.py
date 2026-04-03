@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, Request
 
 from app.database import get_db
+from app.services.gaggimate_ws import gaggimate_client
 
 logger = logging.getLogger("webhook")
 router = APIRouter(tags=["webhook"])
@@ -70,6 +71,9 @@ async def receive_webhook(request: Request):
             )
 
         await db.commit()
+
+        # WebSocketバッファをクリア（次のbrewに備える）
+        gaggimate_client.clear_brew_buffer()
         logger.info("Shot %d saved with %d timeseries points", shot_id, len(pressure_pts))
 
         return {"ok": True, "shot_id": shot_id}

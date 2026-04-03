@@ -27,7 +27,7 @@ class GaggiMateWSClient:
 
     @property
     def url(self) -> str:
-        return f"ws://{settings.gaggimate_host}:{settings.gaggimate_ws_port}"
+        return f"ws://{settings.gaggimate_host}:{settings.gaggimate_ws_port}/ws"
 
     def add_listener(self, fn: Callable[[dict], Any]) -> None:
         self._listeners.append(fn)
@@ -42,6 +42,12 @@ class GaggiMateWSClient:
 
     def clear_brew_buffer(self) -> None:
         self._brew_buffer.clear()
+
+    def take_brew_buffer(self) -> list[dict]:
+        """バッファを返却してクリアする（Webhook処理用）."""
+        buf = list(self._brew_buffer)
+        self._brew_buffer.clear()
+        return buf
 
     async def connect(self) -> None:
         """接続して受信ループを開始."""

@@ -16,12 +16,12 @@
 - [x] GaggiMate WebSocket API 仕様調査
 - [x] gaggimate-mcp（julianleopold / matvey-kuk）コード調査
 - [x] GaggiMate ダミーシミュレーター作成
-- [ ] LLMプロンプト設計書作成（数値分析 + フィードバック → 改善提案）
+- [x] LLMプロンプト設計書作成（docs/PROMPT_DESIGN.md）
 
 ### 1.2 バックエンド（Python / FastAPI）
 
 - [x] プロジェクト初期化（pyproject.toml）
-- [x] SQLiteスキーマ実装（shots / shot_timeseries / beans / grind_settings / recipes / llm_suggestions）
+- [x] SQLiteスキーマ実装（shots / shot_timeseries / beans / grind_settings / recipes / llm_suggestions / push_subscriptions）
 - [ ] DB マイグレーション基盤（Alembic）
 - [x] FastAPI サーバー雛形
   - [x] WebSocket クライアント（GaggiMate接続・データ受信）
@@ -36,7 +36,7 @@
   - [x] LM Studio クライアント（OpenAI互換API）
   - [x] 改善提案生成エンドポイント
   - [x] レシピカスタマイズ生成エンドポイント
-  - [ ] プロンプトテンプレート管理
+  - [x] プロンプトテンプレート管理（ファイルベース + REST API）
 - [x] REST API
   - [x] ショットログ CRUD
   - [x] 豆マスター CRUD
@@ -56,7 +56,7 @@
   - [x] ④ 改善提案（LLM提案テキスト — ③に統合）
   - [x] ⑤ レシピ（一覧 / お気に入り / ソート / カスタマイズ依頼）
   - [x] ⑥ ログ（ショット一覧 / 豆別フィルター）
-  - [x] ⑦ 設定（接続設定 / LM Studio）
+  - [x] ⑦ 設定（接続設定 / LM Studio / 通知）
 - [x] グラフライブラリ導入（Recharts）
 - [x] WebSocket接続ロジック（シミュレーター対応）
 - [x] API クライアント（FastAPIとの通信）
@@ -64,9 +64,9 @@
 ### 1.4 開発環境・インフラ
 
 - [x] monorepo構成整理（backend / frontend / simulator）
-- [ ] Docker Compose（FastAPI + シミュレーター）
+- [x] Docker Compose（FastAPI + シミュレーター + フロントエンド）
 - [ ] LM Studio 導入・Qwen2.5:14B ダウンロード・動作確認
-- [ ] CI/CD 基盤（GitHub Actions: lint + test）
+- [x] CI/CD 基盤（GitHub Actions: lint + test + integration）
 
 ---
 
@@ -88,9 +88,8 @@
 
 ### 2.3 通知
 
-- [ ] Web Push 通知実装（抽出完了）
+- [x] Web Push 通知実装（抽出完了 + LLM提案完了）
 - [ ] LINE Notify 連携（任意）
-- [ ] LLM 提案完了通知
 
 ---
 

@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS recipes (
     is_favorite INTEGER NOT NULL DEFAULT 0,
     avg_score   REAL,
     use_count   INTEGER NOT NULL DEFAULT 0,
+    is_community INTEGER NOT NULL DEFAULT 0,
+    source      TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -100,11 +102,22 @@ async def get_db() -> aiosqlite.Connection:
     return db
 
 
+async def _migrate_recipes_columns(db: aiosqlite.Connection) -> None:
+    """recipes テーブルに新カラムを追加（既存DBマイグレーション用）."""
+    cursor = await db.execute("PRAGMA table_info(recipes)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    if "is_community" not in columns:
+        await db.execute("ALTER TABLE recipes ADD COLUMN is_community INTEGER NOT NULL DEFAULT 0")
+    if "source" not in columns:
+        await db.execute("ALTER TABLE recipes ADD COLUMN source TEXT")
+
+
 async def init_db() -> None:
     """テーブル作成（アプリ起動時に呼ぶ）."""
     db = await get_db()
     try:
         await db.executescript(SCHEMA_SQL)
+        await _migrate_recipes_columns(db)
         await db.commit()
     finally:
         await db.close()

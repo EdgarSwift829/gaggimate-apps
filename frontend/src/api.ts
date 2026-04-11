@@ -102,6 +102,16 @@ export const getHealth = () => fetchJSON<{ status: string; gaggimate_connected: 
 export const startBrew = () => fetchJSON("/api/machine/brew/start", { method: "POST" });
 export const stopBrew = () => fetchJSON("/api/machine/brew/stop", { method: "POST" });
 
+// --- Analytics ---
+export const getDashboard = () => fetchJSON<any>("/api/analytics/dashboard");
+export const compareShots = (ids: number[]) => fetchJSON<any>(`/api/analytics/compare?shot_ids=${ids.join(",")}`);
+export const getTrends = (groupBy: string) => fetchJSON<any>(`/api/analytics/trends?group_by=${groupBy}`);
+
+// --- Recipe AI ---
+export const generateRecipe = (data: any) => fetchJSON<any>("/api/recipes/ai/generate", { method: "POST", body: JSON.stringify(data) });
+export const chatRecipe = (data: any) => fetchJSON<any>("/api/recipes/ai/chat", { method: "POST", body: JSON.stringify(data) });
+export const importRecipe = (data: any) => fetchJSON<any>("/api/recipes/import", { method: "POST", body: JSON.stringify(data) });
+
 // --- WebSocket ---
 export function connectStatusWS(onMessage: (data: MachineStatus) => void): WebSocket {
   const ws = new WebSocket("ws://localhost:8000/ws/status");

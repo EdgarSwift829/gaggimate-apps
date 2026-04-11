@@ -238,6 +238,83 @@ class IntegrationTest:
             preview = suggestion[:150].replace("\n", " ")
             print(f"  ... recipe suggestion: {preview}...")
 
+    # ── Phase 3.2: Analytics ──────────────────────────
+
+    def test_analytics_dashboard(self):
+        print("\n== 13. 分析ダッシュボード ==")
+        r = self.client.get("/api/analytics/dashboard")
+        self.check("GET /api/analytics/dashboard returns 200", r.status_code == 200)
+        data = r.json()
+        self.check("has total_shots", "total_shots" in data)
+        self.check("has score_trend", "score_trend" in data)
+        print(f"  ... total_shots={data.get('total_shots')}, avg_score={data.get('avg_score')}")
+
+    def test_analytics_compare(self, shot_id: int):
+        print(f"\n== 14. ショット比較 (shot_id={shot_id}) ==")
+        r = self.client.get(f"/api/analytics/compare?shot_ids={shot_id}")
+        self.check("GET /api/analytics/compare returns 200", r.status_code == 200)
+        data = r.json()
+        self.check("has shots data", isinstance(data, dict) and len(data) > 0,
+                    f"keys={list(data.keys())}")
+
+    def test_analytics_trends(self):
+        print("\n== 15. パフォーマンストレンド ==")
+        for group in ["bean", "recipe"]:
+            r = self.client.get(f"/api/analytics/trends?group_by={group}")
+            self.check(f"GET trends group_by={group} returns 200", r.status_code == 200)
+            data = r.json()
+            items = data.get("data", data) if isinstance(data, dict) else data
+            self.check(f"trends({group}) returns data", isinstance(items, list))
+            if items:
+                print(f"  ... {group}: {len(items)} groups, top={items[0].get('name')}")
+
+    # ── Phase 3.3: Recipe AI ──────────────────────────
+
+    def test_recipe_import(self):
+        print("\n== 16. コミュニティレシピインポート ==")
+        recipe_json = '{"label":"Test Import","type":"pro","temperature":93,"phases":[{"name":"Extract","duration":25,"pump":{"pressure":9}}]}'
+        r = self.client.post("/api/recipes/import", json={
+            "json_text": recipe_json,
+            "name": "Test Community Recipe",
+            "source": "discord",
+        })
+        self.check("POST /api/recipes/import returns 200", r.status_code == 200,
+                    f"status={r.status_code}, body={r.text[:200]}")
+        if r.status_code == 200:
+            data = r.json()
+            self.check("imported recipe has id", data.get("id") is not None)
+            print(f"  ... imported recipe id={data.get('id')}, name={data.get('name')}")
+
+    def test_recipe_ai_generate(self):
+        print("\n== 17. AIレシピ自動生成 ==")
+        r = self.client.post("/api/recipes/ai/generate", json={
+            "description": "エチオピアの浅煎り用レシピ。フルーティーな風味を引き出したい。",
+            "target_flavor": "fruity, sweet",
+        }, timeout=60)
+        self.check("POST /api/recipes/ai/generate returns 200", r.status_code == 200,
+                    f"status={r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            self.check("has suggestion", len(data.get("suggestion", "")) > 10)
+            preview = data.get("suggestion", "")[:100].replace("\n", " ")
+            print(f"  ... suggestion: {preview}...")
+            if data.get("recipe_json"):
+                print(f"  ... recipe JSON generated: {data['recipe_json'][:80]}...")
+
+    def test_recipe_ai_chat(self):
+        print("\n== 18. AIレシピ対話カスタマイズ ==")
+        r = self.client.post("/api/recipes/ai/chat", json={
+            "message": "甘みをもっと出したいです。温度を上げるべきですか？",
+            "history": [],
+        }, timeout=60)
+        self.check("POST /api/recipes/ai/chat returns 200", r.status_code == 200,
+                    f"status={r.status_code}")
+        if r.status_code == 200:
+            data = r.json()
+            self.check("has reply", len(data.get("reply", "")) > 10)
+            preview = data.get("reply", "")[:100].replace("\n", " ")
+            print(f"  ... reply: {preview}...")
+
     def run(self):
         print("=" * 60)
         print("GaggiMate 結合テスト")
@@ -272,11 +349,25 @@ class IntegrationTest:
         elif not llm_connected:
             print("\n== 10-12. LLMテスト [SKIP] ==")
             print("  LM Studio未接続。LLMテストをスキップします。")
-            print("  LM Studioを起動してLocal Serverをオンにしてください。")
         elif not shot_id:
             print("\n== 10-11. LLM提案テスト [SKIP] ==")
             print("  ショットデータがないためスキップ。")
             self.test_llm_recipe_customize()
+
+        # Phase 3.2: Analytics
+        self.test_analytics_dashboard()
+        if shot_id:
+            self.test_analytics_compare(shot_id)
+        self.test_analytics_trends()
+
+        # Phase 3.3: Recipe AI
+        self.test_recipe_import()
+        if llm_connected:
+            self.test_recipe_ai_generate()
+            self.test_recipe_ai_chat()
+        else:
+            print("\n== 16-17. AI レシピ生成テスト [SKIP] ==")
+            print("  LM Studio未接続。スキップします。")
 
         # Summary
         print("\n" + "=" * 60)

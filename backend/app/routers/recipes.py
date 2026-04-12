@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json as json_lib
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from app.database import get_db
@@ -29,13 +29,34 @@ async def list_recipes(
     sort: str = Query("created_at", pattern="^(created_at|avg_score|use_count)$"),
     favorites_only: bool = False,
     bean_id: int | None = None,
+    status: str = Query("active"),  # "active" | "archived" | "all"
+    community: bool | None = None,  # None=全部, True=コミュニティのみ, False=オリジナルのみ
 ):
-    """レシピ一覧（ソート・フィルター対応）."""
+    """レシピ一覧（ソート・フィルター対応）.
+
+    - status=active（デフォルト）: is_archived = 0 のみ返す
+    - status=archived: is_archived = 1 のみ返す
+    - status=all: 全件返す
+    - community=true: is_community = 1 のみ
+    - community=false: is_community = 0 のみ
+    """
     db = await get_db()
     try:
         query = "SELECT * FROM recipes"
         params: list = []
         conditions = []
+
+        if status == "all":
+            pass  # フィルターなし
+        elif status == "archived":
+            conditions.append("COALESCE(is_archived, 0) = 1")
+        else:  # "active" またはデフォルト
+            conditions.append("COALESCE(is_archived, 0) = 0")
+
+        if community is True:
+            conditions.append("COALESCE(is_community, 0) = 1")
+        elif community is False:
+            conditions.append("COALESCE(is_community, 0) = 0")
 
         if favorites_only:
             conditions.append("is_favorite = 1")
@@ -92,6 +113,29 @@ async def toggle_favorite(recipe_id: int):
         await db.close()
 
 
+@router.patch("/{recipe_id}/archive")
+async def toggle_archive(recipe_id: int):
+    """アーカイブトグル（0→1, 1→0）."""
+    from datetime import datetime, timezone
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT is_archived FROM recipes WHERE id = ?", [recipe_id])
+        recipe = await row.fetchone()
+        if not recipe:
+            raise HTTPException(404, "Recipe not found")
+        current = recipe["is_archived"] or 0
+        new_val = 0 if current else 1
+        archived_at = datetime.now(timezone.utc).isoformat() if new_val else None
+        await db.execute(
+            "UPDATE recipes SET is_archived = ?, archived_at = ? WHERE id = ?",
+            [new_val, archived_at, recipe_id],
+        )
+        await db.commit()
+        return {"id": recipe_id, "is_archived": bool(new_val), "archived_at": archived_at}
+    finally:
+        await db.close()
+
+
 @router.post("/customize")
 async def customize_recipe(body: RecipeCustomizeRequest):
     """LLMによるレシピカスタマイズ提案."""
@@ -116,5 +160,107 @@ async def customize_recipe(body: RecipeCustomizeRequest):
             base_recipe=base_recipe,
         )
         return {"suggestion": suggestion}
+    finally:
+        await db.close()
+
+
+class RecipeUpdate(BaseModel):
+    name: str | None = None
+    profile_json: str | None = None
+    is_favorite: bool | None = None
+
+
+@router.put("/{recipe_id}")
+async def update_recipe(recipe_id: int, body: RecipeUpdate):
+    """レシピ更新（名前・JSON・お気に入り）."""
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
+        recipe = await row.fetchone()
+        if not recipe:
+            raise HTTPException(404, "Recipe not found")
+        fields, params = [], []
+        if body.name is not None:
+            fields.append("name = ?"); params.append(body.name)
+        if body.profile_json is not None:
+            fields.append("json = ?"); params.append(body.profile_json)
+        if body.is_favorite is not None:
+            fields.append("is_favorite = ?"); params.append(int(body.is_favorite))
+        if not fields:
+            return dict(recipe)
+        params.append(recipe_id)
+        await db.execute(f"UPDATE recipes SET {', '.join(fields)} WHERE id = ?", params)
+        await db.commit()
+        row = await db.execute("SELECT * FROM recipes WHERE id = ?", [recipe_id])
+        return dict(await row.fetchone())
+    finally:
+        await db.close()
+
+
+@router.get("/{recipe_id}/usage")
+async def get_recipe_usage(recipe_id: int):
+    """レシピがショットで使われている件数を返す."""
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT id FROM recipes WHERE id = ?", [recipe_id])
+        if not await row.fetchone():
+            raise HTTPException(404, "Recipe not found")
+        count_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM shots WHERE recipe_id = ?", [recipe_id]
+        )
+        result = await count_row.fetchone()
+        shot_count = result["cnt"] if result else 0
+        return {"recipe_id": recipe_id, "shot_count": shot_count}
+    finally:
+        await db.close()
+
+
+@router.delete("/{recipe_id}")
+async def delete_recipe(recipe_id: int, force: bool = False):
+    """レシピ削除（安全版）.
+
+    - shots 参照なし → ハードデリート
+    - shots 参照あり、force=False → HTTP 409
+    - shots 参照あり、force=True → is_archived=1 にしてソフト削除
+    """
+    db = await get_db()
+    try:
+        row = await db.execute("SELECT id FROM recipes WHERE id = ?", [recipe_id])
+        if not await row.fetchone():
+            raise HTTPException(404, "Recipe not found")
+
+        # shotsテーブルでの参照件数を確認
+        count_row = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM shots WHERE recipe_id = ?", [recipe_id]
+        )
+        result = await count_row.fetchone()
+        shot_count = result["cnt"] if result else 0
+
+        if shot_count > 0 and not force:
+            raise HTTPException(
+                409,
+                f"Recipe is used in {shot_count} shots. Use ?force=true to archive instead.",
+            )
+
+        if shot_count > 0 and force:
+            # is_archivedカラムが存在しない場合は追加する
+            try:
+                await db.execute(
+                    "ALTER TABLE recipes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
+                )
+                await db.commit()
+            except Exception:
+                # カラムが既に存在する場合は無視
+                pass
+            await db.execute(
+                "UPDATE recipes SET is_archived = 1 WHERE id = ?", [recipe_id]
+            )
+            await db.commit()
+            return {"ok": True, "archived": True}
+
+        # 参照なし → ハードデリート
+        await db.execute("DELETE FROM recipes WHERE id = ?", [recipe_id])
+        await db.commit()
+        return {"ok": True, "archived": False}
     finally:
         await db.close()

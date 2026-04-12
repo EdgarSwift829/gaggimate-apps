@@ -37,7 +37,7 @@ class ShotResponse(BaseModel):
 
 
 @router.get("")
-async def list_shots(limit: int = 50, offset: int = 0, bean_id: int | None = None):
+async def list_shots(limit: int = 50, offset: int = 0, bean_id: int | None = None, recipe_id: int | None = None):
     """ショット一覧取得."""
     db = await get_db()
     try:
@@ -48,9 +48,15 @@ async def list_shots(limit: int = 50, offset: int = 0, bean_id: int | None = Non
             LEFT JOIN recipes r ON s.recipe_id = r.id
         """
         params: list = []
+        conditions: list[str] = []
         if bean_id is not None:
-            query += " WHERE s.bean_id = ?"
+            conditions.append("s.bean_id = ?")
             params.append(bean_id)
+        if recipe_id is not None:
+            conditions.append("s.recipe_id = ?")
+            params.append(recipe_id)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY s.timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         rows = await db.execute(query, params)

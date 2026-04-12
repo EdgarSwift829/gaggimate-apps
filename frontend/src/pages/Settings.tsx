@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getHealth } from "../api";
+import { getHealth, getSettings, saveSettings, type Settings } from "../api";
 
 const API_BASE = "http://localhost:8000";
 
@@ -76,15 +76,38 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
 }
 
+const DEFAULT_SETTINGS: Settings = {
+  gaggimate_host: "localhost",
+  gaggimate_ws_port: 8765,
+  lm_studio_base_url: "http://localhost:1234/v1",
+  lm_studio_model: "local-model",
+  line_notify_token: null,
+};
+
 export default function SettingsPage() {
   const [health, setHealth] = useState<{ status: string; gaggimate_connected: boolean } | null>(null);
   const [llmResult, setLlmResult] = useState<LLMTestResult | null>(null);
   const [llmTesting, setLlmTesting] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [lineTestResult, setLineTestResult] = useState<string | null>(null);
+  const [lineTestLoading, setLineTestLoading] = useState(false);
+
+  // 設定フォームの状態
+  const [form, setForm] = useState<Settings>(DEFAULT_SETTINGS);
+  const [saving, setSaving] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth(null));
+
+    // バックエンドから現在の設定値を取得してフォームに反映
+    getSettings()
+      .then((s) => setForm(s))
+      .catch(() => {
+        // 取得失敗時はデフォルト値のまま
+      });
+
     // 既存のPush購読状態を確認
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.getRegistration().then(async (reg) => {
@@ -96,6 +119,25 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const handleFormChange = (field: keyof Settings, value: string | number | null) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveToast(null);
+    try {
+      const saved = await saveSettings(form);
+      setForm(saved);
+      setSaveToast("設定を保存しました");
+    } catch {
+      setSaveToast("保存に失敗しました");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveToast(null), 3000);
+    }
+  };
+
   const testLLM = async () => {
     setLlmTesting(true);
     try {
@@ -106,6 +148,24 @@ export default function SettingsPage() {
       setLlmResult({ connected: false, base_url: "", error: "バックエンドに接続できません" });
     }
     setLlmTesting(false);
+  };
+
+  const handleLineTest = async () => {
+    if (!form.line_notify_token?.trim()) return;
+    setLineTestLoading(true);
+    setLineTestResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/line-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: form.line_notify_token }),
+      });
+      const data = await res.json();
+      setLineTestResult(data.success ? "送信成功" : "送信失敗");
+    } catch {
+      setLineTestResult("エラー: バックエンドに接続できません");
+    }
+    setLineTestLoading(false);
   };
 
   const handlePushToggle = async () => {
@@ -126,6 +186,17 @@ export default function SettingsPage() {
   return (
     <div>
       <h1 className="mb-24">設定</h1>
+
+      {saveToast && (
+        <div style={{
+          position: "fixed", top: 16, right: 16, zIndex: 1000,
+          padding: "12px 20px", borderRadius: "var(--radius)",
+          background: saveToast.includes("失敗") ? "#e74c3c" : "#2ecc71",
+          color: "#fff", fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+        }}>
+          {saveToast}
+        </div>
+      )}
 
       <div className="card">
         <h3>接続状態</h3>
@@ -157,11 +228,19 @@ export default function SettingsPage() {
         <h3>GaggiMate接続設定</h3>
         <div className="form-group">
           <label>GaggiMate ホスト</label>
-          <input defaultValue="localhost" placeholder="gaggimate.local or IP" />
+          <input
+            value={form.gaggimate_host}
+            onChange={(e) => handleFormChange("gaggimate_host", e.target.value)}
+            placeholder="gaggimate.local or IP"
+          />
         </div>
         <div className="form-group">
           <label>WebSocket ポート</label>
-          <input type="number" defaultValue="8765" />
+          <input
+            type="number"
+            value={form.gaggimate_ws_port}
+            onChange={(e) => handleFormChange("gaggimate_ws_port", parseInt(e.target.value, 10) || 8765)}
+          />
         </div>
       </div>
 
@@ -169,11 +248,17 @@ export default function SettingsPage() {
         <h3>LM Studio接続設定</h3>
         <div className="form-group">
           <label>API URL</label>
-          <input defaultValue="http://localhost:1234/v1" />
+          <input
+            value={form.lm_studio_base_url}
+            onChange={(e) => handleFormChange("lm_studio_base_url", e.target.value)}
+          />
         </div>
         <div className="form-group">
           <label>モデル</label>
-          <input defaultValue="local-model" />
+          <input
+            value={form.lm_studio_model}
+            onChange={(e) => handleFormChange("lm_studio_model", e.target.value)}
+          />
         </div>
         <button className="btn btn-primary" onClick={testLLM} disabled={llmTesting} style={{ marginTop: 8 }}>
           {llmTesting ? "テスト中..." : "LM Studio 接続テスト"}
@@ -217,6 +302,34 @@ export default function SettingsPage() {
             {pushEnabled ? "通知ON — ブラウザを閉じても通知を受信します" : "通知OFF"}
           </div>
         </div>
+        <div className="form-group" style={{ marginTop: 16 }}>
+          <label>LINE Notify トークン</label>
+          <input
+            type="password"
+            value={form.line_notify_token ?? ""}
+            onChange={(e) => handleFormChange("line_notify_token", e.target.value || null)}
+            placeholder="LINE Notify アクセストークンを入力"
+          />
+          <button
+            className="btn btn-secondary"
+            onClick={handleLineTest}
+            disabled={lineTestLoading || !form.line_notify_token?.trim()}
+            style={{ marginTop: 8 }}
+          >
+            {lineTestLoading ? "送信中..." : "テスト送信"}
+          </button>
+          {lineTestResult && (
+            <div style={{ marginTop: 8, fontSize: 13, color: lineTestResult.includes("成功") ? "var(--green)" : "var(--accent)" }}>
+              {lineTestResult}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? "保存中..." : "保存"}
+        </button>
       </div>
     </div>
   );

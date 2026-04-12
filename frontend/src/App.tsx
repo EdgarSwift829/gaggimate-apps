@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Compare from "./pages/Compare";
 import Trends from "./pages/Trends";
 import RecipeAI from "./pages/RecipeAI";
+import MobileConnect from "./pages/MobileConnect";
 import "./App.css";
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <NavLink to="/log">ログ</NavLink>
           <NavLink to="/dashboard">分析</NavLink>
           <NavLink to="/recipe-ai">AI レシピ</NavLink>
+          <NavLink to="/mobile">スマホ連携</NavLink>
           <NavLink to="/settings">設定</NavLink>
         </nav>
         <main className="content">
@@ -35,6 +37,7 @@ function App() {
             <Route path="/compare" element={<Compare />} />
             <Route path="/trends" element={<Trends />} />
             <Route path="/recipe-ai" element={<RecipeAI />} />
+            <Route path="/mobile" element={<MobileConnect />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

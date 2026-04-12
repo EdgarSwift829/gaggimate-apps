@@ -164,12 +164,13 @@ async def chat_recipe(body: ChatRequest):
                 model=settings.lm_studio_model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=2048,
+                max_tokens=1024,
             )
             reply = response.choices[0].message.content or ""
         except Exception as e:
             logger.error("LLM chat request failed: %s", e)
-            raise HTTPException(502, f"LLM connection error: {e}")
+            reply = f"LLM接続エラー: {e}\nLM Studioが起動していてモデルがロードされているか確認してください。"
+            recipe_json = None
 
         # Extract JSON if present
         recipe_json = _extract_json_block(reply)

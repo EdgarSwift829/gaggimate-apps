@@ -1,11 +1,11 @@
-## ショットデータ
-- 抽出時間: {duration}秒
-- ドーズ: {dose_g}g → 抽出量: {yield_g}g（収率: {yield_ratio}x）
-- 平均圧力: {avg_pressure}bar / ピーク: {peak_pressure}bar
-- 平均温度: {avg_temp}°C
-- 平均フロー: {avg_flow}ml/s
+## Shot Data
+- Duration: {duration}s
+- Dose: {dose_g}g → Yield: {yield_g}g (ratio: {yield_ratio}x)
+- Avg pressure: {avg_pressure}bar / Peak: {peak_pressure}bar
+- Avg temperature: {avg_temp}°C
+- Avg flow: {avg_flow}ml/s
 {grind_line}{bean_line}
 {flags_section}
 {past_section}
-## ユーザーフィードバック
+## User Feedback
 {feedback}

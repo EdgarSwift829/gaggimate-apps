@@ -1,15 +1,36 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getShots, compareShots, type Shot } from "../api";
 
 const COLORS = ["#e94560", "#3498db", "#2ecc71", "#f1c40f", "#9b59b6"];
 
 export default function Compare() {
+  const [searchParams] = useSearchParams();
   const [shots, setShots] = useState<Shot[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [comparison, setComparison] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // クエリパラメータ ?ids=1,2,3 から初期選択を設定し、自動比較を実行
+  useEffect(() => {
+    const idsParam = searchParams.get("ids");
+    if (idsParam) {
+      const ids = idsParam.split(",").map(Number).filter((n) => !isNaN(n) && n > 0);
+      if (ids.length >= 2) {
+        const limited = ids.slice(0, 3);
+        setSelectedIds(limited);
+        // 自動比較実行
+        setLoading(true);
+        setError(null);
+        compareShots(limited)
+          .then((data) => setComparison(data))
+          .catch((e: unknown) => setError(e instanceof Error ? e.message : "比較に失敗しました"))
+          .finally(() => setLoading(false));
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     getShots(100).then(setShots).catch(() => {});

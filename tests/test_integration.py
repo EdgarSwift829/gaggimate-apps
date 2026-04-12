@@ -254,8 +254,10 @@ class IntegrationTest:
         r = self.client.get(f"/api/analytics/compare?shot_ids={shot_id}")
         self.check("GET /api/analytics/compare returns 200", r.status_code == 200)
         data = r.json()
-        self.check("has shots data", isinstance(data, dict) and len(data) > 0,
-                    f"keys={list(data.keys())}")
+        # レスポンスは {"shots": [...]} 形式
+        shots = data.get("shots", data) if isinstance(data, dict) else data
+        self.check("has shots data", isinstance(shots, list) and len(shots) > 0,
+                    f"keys={list(data.keys()) if isinstance(data, dict) else type(data)}")
 
     def test_analytics_trends(self):
         print("\n== 15. パフォーマンストレンド ==")
@@ -263,9 +265,10 @@ class IntegrationTest:
             r = self.client.get(f"/api/analytics/trends?group_by={group}")
             self.check(f"GET trends group_by={group} returns 200", r.status_code == 200)
             data = r.json()
-            items = data.get("data", data) if isinstance(data, dict) else data
+            # レスポンスは {"group_by": ..., "groups": [...]} 形式
+            items = data.get("groups", data.get("data", data)) if isinstance(data, dict) else data
             self.check(f"trends({group}) returns data", isinstance(items, list))
-            if items:
+            if isinstance(items, list) and items:
                 print(f"  ... {group}: {len(items)} groups, top={items[0].get('name')}")
 
     # ── Phase 3.3: Recipe AI ──────────────────────────

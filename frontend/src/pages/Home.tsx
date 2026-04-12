@@ -16,12 +16,26 @@ export default function Home() {
     });
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
-    getRecipes().then(setRecipes).catch(() => {});
+    getRecipes().then(setRecipes).catch((e) => { console.error("getRecipes failed:", e); });
     return () => ws.close();
   }, []);
 
   const handleStart = async () => {
     try {
+      // 選択レシピの stop_on_weight を localStorage に保存して Brewing.tsx で参照する
+      const recipe = recipes.find((r) => r.id === selectedRecipe) ?? null;
+      if (recipe) {
+        try {
+          const profileJson = JSON.parse(recipe.json) as { stop_on_weight?: number };
+          const stopOnWeight = profileJson.stop_on_weight ?? 0;
+          localStorage.setItem("brew_stop_on_weight", String(stopOnWeight));
+        } catch {
+          localStorage.removeItem("brew_stop_on_weight");
+        }
+      } else {
+        localStorage.removeItem("brew_stop_on_weight");
+      }
+
       await startBrew();
       navigate("/brewing");
     } catch (e) {

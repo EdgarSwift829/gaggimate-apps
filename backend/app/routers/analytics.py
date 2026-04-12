@@ -32,7 +32,7 @@ async def dashboard():
                LIMIT 1""",
         )
         fav_bean_row = await row.fetchone()
-        favorite_bean = dict(fav_bean_row) if fav_bean_row else None
+        favorite_bean = fav_bean_row["name"] if fav_bean_row else None
 
         # Most used recipe
         row = await db.execute(
@@ -44,27 +44,23 @@ async def dashboard():
                LIMIT 1""",
         )
         top_recipe_row = await row.fetchone()
-        most_used_recipe = dict(top_recipe_row) if top_recipe_row else None
+        most_used_recipe = top_recipe_row["name"] if top_recipe_row else None
 
-        # Score trend: last 30 shots, average per week
+        # Score trend: last 12 weeks, average per week
         rows = await db.execute(
             """SELECT strftime('%Y-%W', timestamp) as week,
-                      AVG(score) as avg_score,
+                      AVG(score) as score,
                       COUNT(*) as shot_count
                FROM shots
                WHERE score IS NOT NULL
-               ORDER BY timestamp DESC
-               LIMIT 30""",
+               GROUP BY strftime('%Y-%W', timestamp)
+               ORDER BY week DESC
+               LIMIT 12""",
         )
-        trend_raw = [dict(r) for r in await rows.fetchall()]
-
-        # Re-aggregate by week from the raw rows
-        week_map: dict[str, dict] = {}
-        for r in trend_raw:
-            week = r["week"]
-            if week not in week_map:
-                week_map[week] = {"week": week, "avg_score": r["avg_score"], "shot_count": r["shot_count"]}
-        score_trend = sorted(week_map.values(), key=lambda x: x["week"])
+        score_trend = [
+            {"date": r["week"], "score": round(r["score"], 2), "shot_count": r["shot_count"]}
+            for r in await rows.fetchall()
+        ]
 
         return {
             "total_shots": total_shots,
@@ -126,25 +122,23 @@ async def compare_shots(shot_ids: str = Query(..., description="Comma-separated 
             sid = row.pop("shot_id")
             ts_by_shot[sid].append(row)
 
-        # Build result keyed by shot ID
+        # Build result as array
+        shots_list = []
         for sid in ids:
             meta = shots[sid]
-            result[str(sid)] = {
-                "metadata": {
-                    "id": meta["id"],
-                    "timestamp": meta["timestamp"],
-                    "duration": meta["duration"],
-                    "score": meta["score"],
-                    "dose_g": meta["dose_g"],
-                    "yield_g": meta["yield_g"],
-                    "yield_ratio": meta["yield_ratio"],
-                    "bean_name": meta["bean_name"],
-                    "recipe_name": meta["recipe_name"],
-                },
+            shots_list.append({
+                "shot_id": sid,
+                "timestamp": meta["timestamp"],
+                "duration": meta["duration"],
+                "score": meta["score"],
+                "dose_g": meta["dose_g"],
+                "yield_g": meta["yield_g"],
+                "yield_ratio": meta["yield_ratio"],
+                "bean_name": meta["bean_name"],
+                "recipe_name": meta["recipe_name"],
                 "timeseries": ts_by_shot.get(sid, []),
-            }
-
-        return result
+            })
+        return {"shots": shots_list}
     finally:
         await db.close()
 
@@ -194,6 +188,6 @@ async def performance_trends(group_by: str = Query("bean", description="Group by
                 entry["avg_yield_ratio"] = round(entry["avg_yield_ratio"], 2)
             results.append(entry)
 
-        return {"group_by": group_by, "data": results}
+        return {"group_by": group_by, "groups": results}
     finally:
         await db.close()

@@ -1,7 +1,41 @@
-import { useEffect, useState } from "react";
-import { generateRecipe, chatRecipe, importRecipe, getBeans, type Bean } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { generateRecipe, chatRecipe, importRecipeRaw, getBeans, type Bean } from "../api";
 
 type Tab = "generate" | "chat" | "import";
+
+interface SaveBannerProps {
+  message: string;
+}
+
+function SaveBanner({ message }: SaveBannerProps) {
+  return (
+    <div style={{
+      background: "var(--green, #2a7a4b)",
+      color: "#fff",
+      borderRadius: "var(--radius)",
+      padding: "12px 16px",
+      marginTop: 12,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 16,
+    }}>
+      <span>{message}</span>
+      <Link
+        to="/recipes"
+        style={{
+          color: "#fff",
+          fontWeight: 600,
+          textDecoration: "underline",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Recipesページで確認 →
+      </Link>
+    </div>
+  );
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -43,10 +77,50 @@ function GenerateTab() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     getBeans().then(setBeans).catch(() => {});
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, []);
+
+  const handleSave = async () => {
+    if (!result) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      const recipeName: string =
+        typeof result.name === "string" && result.name.trim()
+          ? result.name.trim()
+          : `AI生成レシピ ${new Date().toLocaleString("ja-JP")}`;
+
+      let jsonText: string;
+      if (result.recipe_json !== undefined) {
+        jsonText =
+          typeof result.recipe_json === "string"
+            ? result.recipe_json
+            : JSON.stringify(result.recipe_json);
+      } else {
+        jsonText = JSON.stringify({
+          suggestion: typeof result.recipe === "string" ? result.recipe : JSON.stringify(result.recipe ?? result),
+          generated_at: new Date().toISOString(),
+        });
+      }
+
+      await importRecipeRaw({ name: recipeName, json_text: jsonText, source: "AI生成" });
+      setSaved(true);
+      saveTimerRef.current = setTimeout(() => setSaved(false), 3000);
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : "保存に失敗しました");
+    }
+    setSaving(false);
+  };
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -119,6 +193,20 @@ function GenerateTab() {
               {typeof result.recipe === "string" ? result.recipe : JSON.stringify(result.recipe ?? result, null, 2)}
             </pre>
           </div>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+            style={{ marginTop: 12, width: "100%" }}
+          >
+            {saving ? "保存中..." : "レシピを保存"}
+          </button>
+          {saveError && (
+            <p style={{ color: "var(--accent)", marginTop: 8, fontSize: 13 }}>エラー: {saveError}</p>
+          )}
+          {saved && (
+            <SaveBanner message="保存しました！Recipesページで確認できます" />
+          )}
         </div>
       )}
     </>
@@ -131,6 +219,35 @@ function ChatTab() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [savedIndex, setSavedIndex] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  const handleApplyRecipe = async (content: string, index: number) => {
+    setSavingIndex(index);
+    setSaveError(null);
+    setSavedIndex(null);
+    try {
+      const recipeName = `チャットレシピ ${new Date().toLocaleString("ja-JP")}`;
+      const jsonText = JSON.stringify({
+        suggestion: content,
+        generated_at: new Date().toISOString(),
+      });
+      await importRecipeRaw({ name: recipeName, json_text: jsonText, source: "チャット生成" });
+      setSavedIndex(index);
+      saveTimerRef.current = setTimeout(() => setSavedIndex(null), 3000);
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : "保存に失敗しました");
+    }
+    setSavingIndex(null);
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -200,6 +317,24 @@ function ChatTab() {
               {msg.role === "user" ? "あなた" : "AI"}
             </div>
             <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{msg.content}</div>
+            {msg.role === "assistant" && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleApplyRecipe(msg.content, i)}
+                  disabled={savingIndex === i}
+                  style={{ fontSize: 12, padding: "4px 12px" }}
+                >
+                  {savingIndex === i ? "保存中..." : "レシピ適用"}
+                </button>
+                {savedIndex === i && (
+                  <SaveBanner message="保存しました！Recipesページで確認できます" />
+                )}
+                {saveError && savingIndex === null && savedIndex === null && (
+                  <p style={{ color: "var(--accent)", marginTop: 4, fontSize: 12 }}>エラー: {saveError}</p>
+                )}
+              </div>
+            )}
           </div>
         ))}
         {loading && (
@@ -232,43 +367,181 @@ function ChatTab() {
 }
 
 /* ===== Import Tab ===== */
+
+interface GaggiMatePhase {
+  name?: string;
+  pressure?: number;
+  duration?: number;
+  target_pressure?: number;
+  time?: number;
+  [key: string]: unknown;
+}
+
+interface GaggiMateProfile {
+  label?: string;
+  name?: string;
+  temperature?: number;
+  phases?: GaggiMatePhase[];
+  [key: string]: unknown;
+}
+
+function parseProfile(text: string): { profile: GaggiMateProfile; valid: boolean } | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const hasPhases = Array.isArray((parsed as GaggiMateProfile).phases);
+    return { profile: parsed as GaggiMateProfile, valid: hasPhases };
+  } catch {
+    return null;
+  }
+}
+
 function ImportTab() {
   const [name, setName] = useState("");
   const [jsonText, setJsonText] = useState("");
+  const [source, setSource] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [parseResult, setParseResult] = useState<{ profile: GaggiMateProfile; valid: boolean } | null>(null);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const handleJsonChange = (text: string) => {
+    setJsonText(text);
+    setResult(null);
+    setError(null);
+    if (!text.trim()) {
+      setParseResult(null);
+      setJsonError(null);
+      return;
+    }
+    const parsed = parseProfile(text);
+    if (parsed === null) {
+      setParseResult(null);
+      setJsonError("無効なJSONです。正しいJSON形式で入力してください。");
+    } else {
+      setParseResult(parsed);
+      setJsonError(null);
+      // Auto-fill name from label/name if not yet set by user
+      const candidate = parsed.profile.label ?? parsed.profile.name;
+      if (candidate && typeof candidate === "string" && !name.trim()) {
+        setName(candidate);
+      }
+    }
+  };
 
   const handleImport = async () => {
-    if (!name.trim() || !jsonText.trim()) return;
+    if (!name.trim() || !jsonText.trim() || !parseResult) return;
     setLoading(true);
     setError(null);
     setResult(null);
 
-    // Validate JSON
-    let parsed: any;
     try {
-      parsed = JSON.parse(jsonText);
-    } catch {
-      setError("無効なJSONです。正しいJSON形式で入力してください。");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      await importRecipe({ name: name.trim(), recipe_json: parsed });
-      setResult("レシピのインポートに成功しました");
+      await importRecipeRaw({
+        name: name.trim(),
+        json_text: jsonText,
+        source: source.trim() || undefined,
+      });
+      setResult("インポート成功！レシピが保存されました。");
       setName("");
       setJsonText("");
-    } catch (e: any) {
-      setError(e.message);
+      setSource("");
+      setParseResult(null);
+      setJsonError(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "インポートに失敗しました");
     }
     setLoading(false);
   };
 
+  const canImport = !loading && name.trim().length > 0 && parseResult !== null;
+
   return (
     <div className="card">
-      <h3>レシピインポート</h3>
+      <h3>コミュニティレシピインポート</h3>
+      <p style={{ color: "var(--text-muted)", marginBottom: 16, fontSize: 14 }}>
+        GaggiMate プロファイル JSON を貼り付けてインポートできます（Discord などで共有されたものに対応）
+      </p>
+
+      {/* JSON Paste Area */}
+      <div className="form-group">
+        <label>プロファイル JSON</label>
+        <textarea
+          value={jsonText}
+          onChange={(e) => handleJsonChange(e.target.value)}
+          placeholder={'{\n  "label": "My Profile",\n  "temperature": 93,\n  "phases": [...]\n}'}
+          style={{ minHeight: 180, fontFamily: "monospace", fontSize: 13 }}
+        />
+        {jsonError && (
+          <p style={{ color: "var(--accent)", marginTop: 4, fontSize: 13 }}>{jsonError}</p>
+        )}
+        {parseResult && !parseResult.valid && (
+          <p style={{ color: "var(--yellow, #f0c040)", marginTop: 4, fontSize: 13 }}>
+            有効な JSON ですが <code>phases</code> 配列が見つかりません。このまま保存できます。
+          </p>
+        )}
+        {parseResult?.valid && (
+          <p style={{ color: "var(--green)", marginTop: 4, fontSize: 13 }}>✓ 有効な GaggiMate プロファイルです</p>
+        )}
+      </div>
+
+      {/* Preview */}
+      {parseResult?.valid && (
+        <div style={{
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius)",
+          padding: 16,
+          marginBottom: 16,
+        }}>
+          <h4 style={{ marginBottom: 12, fontSize: 14 }}>プレビュー</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px", marginBottom: 12, fontSize: 14 }}>
+            {(parseResult.profile.label || parseResult.profile.name) && (
+              <div>
+                <span style={{ color: "var(--text-muted)" }}>ラベル: </span>
+                <strong>{parseResult.profile.label ?? parseResult.profile.name}</strong>
+              </div>
+            )}
+            {parseResult.profile.temperature !== undefined && (
+              <div>
+                <span style={{ color: "var(--text-muted)" }}>温度: </span>
+                <strong>{parseResult.profile.temperature}°C</strong>
+              </div>
+            )}
+          </div>
+          {Array.isArray(parseResult.profile.phases) && parseResult.profile.phases.length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>フェーズ</div>
+              <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <th style={{ textAlign: "left", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 400 }}>名前</th>
+                    <th style={{ textAlign: "right", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 400 }}>圧力</th>
+                    <th style={{ textAlign: "right", padding: "4px 8px", color: "var(--text-muted)", fontWeight: 400 }}>時間</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parseResult.profile.phases.map((phase, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "6px 8px" }}>{phase.name ?? `フェーズ ${i + 1}`}</td>
+                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                        {phase.pressure !== undefined ? `${phase.pressure} bar` :
+                          phase.target_pressure !== undefined ? `${phase.target_pressure} bar` : "—"}
+                      </td>
+                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                        {phase.duration !== undefined ? `${phase.duration}s` :
+                          phase.time !== undefined ? `${phase.time}s` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recipe Name */}
       <div className="form-group">
         <label>レシピ名</label>
         <input
@@ -277,19 +550,21 @@ function ImportTab() {
           placeholder="例: Community Turbo Shot"
         />
       </div>
+
+      {/* Source */}
       <div className="form-group">
-        <label>レシピJSON</label>
-        <textarea
-          value={jsonText}
-          onChange={(e) => setJsonText(e.target.value)}
-          placeholder='{"stages": [...]}'
-          style={{ minHeight: 160, fontFamily: "monospace", fontSize: 13 }}
+        <label>ソース（任意）</label>
+        <input
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="例: Discord #profiles / GaggiMate Community"
         />
       </div>
+
       <button
         className="btn btn-primary"
         onClick={handleImport}
-        disabled={loading || !name.trim() || !jsonText.trim()}
+        disabled={!canImport}
         style={{ width: "100%" }}
       >
         {loading ? "インポート中..." : "インポート"}

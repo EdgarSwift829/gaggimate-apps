@@ -43,18 +43,29 @@ async def receive_webhook(request: Request):
             if found:
                 recipe_id = found["id"]
 
-        cursor = await db.execute(
-            """INSERT INTO shots (timestamp, duration, recipe_id, yield_g, yield_ratio, webhook_payload)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            [
-                payload.get("timestamp"),
-                payload.get("duration"),
-                recipe_id,
-                payload.get("yield"),
-                payload.get("yield_ratio"),
-                json.dumps(payload, ensure_ascii=False),
-            ],
-        )
+        # timestamp: payloadにあれば使用、なければDB側のデフォルト(datetime('now'))を使う
+        ts = payload.get("timestamp")
+        # yield_g: "yield_g" または "yield" フィールドに対応
+        yield_g = payload.get("yield_g") or payload.get("yield")
+        dose_g = payload.get("dose_g")
+        yield_ratio = payload.get("yield_ratio")
+        if yield_ratio is None and yield_g and dose_g:
+            yield_ratio = round(yield_g / dose_g, 2)
+
+        if ts is not None:
+            cursor = await db.execute(
+                """INSERT INTO shots (timestamp, duration, recipe_id, dose_g, yield_g, yield_ratio, webhook_payload)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                [ts, payload.get("duration"), recipe_id, dose_g, yield_g, yield_ratio,
+                 json.dumps(payload, ensure_ascii=False)],
+            )
+        else:
+            cursor = await db.execute(
+                """INSERT INTO shots (duration, recipe_id, dose_g, yield_g, yield_ratio, webhook_payload)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                [payload.get("duration"), recipe_id, dose_g, yield_g, yield_ratio,
+                 json.dumps(payload, ensure_ascii=False)],
+            )
         shot_id = cursor.lastrowid
 
         # テレメトリ → shot_timeseries

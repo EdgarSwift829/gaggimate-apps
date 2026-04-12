@@ -65,3 +65,16 @@ async def unsubscribe(body: PushSubscription):
         return {"ok": True}
     finally:
         await db.close()
+
+
+class LineTokenRequest(BaseModel):
+    token: str
+    message: str = "LINE Notify テスト送信"
+
+
+@router.post("/line-test")
+async def line_notify_test(body: LineTokenRequest):
+    """LINE Notify 接続テスト."""
+    from app.services.line_notify import send_line_notify
+    ok = await send_line_notify(body.token, body.message)
+    return {"success": ok}

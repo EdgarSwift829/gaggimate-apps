@@ -110,6 +110,10 @@ async def _migrate_recipes_columns(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE recipes ADD COLUMN is_community INTEGER NOT NULL DEFAULT 0")
     if "source" not in columns:
         await db.execute("ALTER TABLE recipes ADD COLUMN source TEXT")
+    if "is_archived" not in columns:
+        await db.execute("ALTER TABLE recipes ADD COLUMN is_archived INTEGER DEFAULT 0")
+    if "archived_at" not in columns:
+        await db.execute("ALTER TABLE recipes ADD COLUMN archived_at TEXT")
 
 
 async def init_db() -> None:

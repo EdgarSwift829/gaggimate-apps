@@ -8,3 +8,4 @@ Format each suggestion as:
 
 Grinder: Comandante C40 (managed by click count)
 Machine: Gaggia Classic E24 + GaggiMate Pro (pressure profile control available)
+Respond in Japanese.

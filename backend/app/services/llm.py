@@ -42,7 +42,7 @@ async def get_improvement_suggestion(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            temperature=0.7,
+            temperature=0.3,
             max_tokens=1024,
         )
         return response.choices[0].message.content or "提案を生成できませんでした。"

@@ -75,9 +75,13 @@ class GaggiMateWSClient:
         tp = data.get("tp", "")
 
         if tp == "sub:status":
-            mode = data.get("mode", "standby")
+            mode_raw = data.get("mode", 0)
             was_brewing = self._is_brewing
-            self._is_brewing = mode == "brew"
+            # 文字列（シミュレーター）と整数（実機: 1=BREW）の両方に対応
+            if isinstance(mode_raw, str):
+                self._is_brewing = mode_raw == "brew"
+            else:
+                self._is_brewing = mode_raw == 1
 
             if self._is_brewing:
                 self._brew_buffer.append(data)

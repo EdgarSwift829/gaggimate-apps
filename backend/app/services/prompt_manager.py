@@ -71,6 +71,8 @@ def render_shot_improvement(
     if past_shots_summary:
         past_section = f"## 過去ショットとの比較\n{past_shots_summary}\n"
 
+    target_yield = round(analysis.dose_g * 2.0, 1)
+
     user = get_template("shot_improvement_user").format(
         duration=analysis.duration,
         dose_g=analysis.dose_g,
@@ -80,6 +82,7 @@ def render_shot_improvement(
         peak_pressure=analysis.peak_pressure,
         avg_temp=analysis.avg_temp,
         avg_flow=analysis.avg_flow,
+        target_yield=target_yield,
         grind_line=grind_line,
         bean_line=bean_line,
         flags_section=flags_section,

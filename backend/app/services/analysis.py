@@ -20,7 +20,7 @@ class ShotAnalysis:
 
 def analyze_shot(
     timeseries: list[dict],
-    dose_g: float = 16.0,
+    dose_g: float = 18.0,
     yield_g: float | None = None,
     target_duration: float = 27.0,
     target_yield_ratio: float = 2.0,

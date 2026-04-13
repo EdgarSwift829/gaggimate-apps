@@ -4,6 +4,12 @@ import { generateRecipe, chatRecipe, importRecipeRaw, getBeans, type Bean } from
 
 type Tab = "generate" | "chat" | "import";
 
+// Context passed from ImportTab to ChatTab when user wants to customize an imported recipe
+interface ImportedRecipeContext {
+  name: string;
+  jsonText: string;
+}
+
 interface SaveBannerProps {
   message: string;
 }
@@ -44,6 +50,12 @@ interface ChatMessage {
 
 export default function RecipeAI() {
   const [tab, setTab] = useState<Tab>("generate");
+  const [importedContext, setImportedContext] = useState<ImportedRecipeContext | null>(null);
+
+  const handleCustomizeImported = (ctx: ImportedRecipeContext) => {
+    setImportedContext(ctx);
+    setTab("chat");
+  };
 
   return (
     <div>
@@ -53,7 +65,7 @@ export default function RecipeAI() {
         <button className={`btn ${tab === "generate" ? "btn-primary" : "btn-secondary"}`} onClick={() => setTab("generate")}>
           生成
         </button>
-        <button className={`btn ${tab === "chat" ? "btn-primary" : "btn-secondary"}`} onClick={() => setTab("chat")}>
+        <button className={`btn ${tab === "chat" ? "btn-primary" : "btn-secondary"}`} onClick={() => { setTab("chat"); setImportedContext(null); }}>
           チャット
         </button>
         <button className={`btn ${tab === "import" ? "btn-primary" : "btn-secondary"}`} onClick={() => setTab("import")}>
@@ -62,8 +74,8 @@ export default function RecipeAI() {
       </div>
 
       {tab === "generate" && <GenerateTab />}
-      {tab === "chat" && <ChatTab />}
-      {tab === "import" && <ImportTab />}
+      {tab === "chat" && <ChatTab initialContext={importedContext} />}
+      {tab === "import" && <ImportTab onCustomize={handleCustomizeImported} />}
     </div>
   );
 }
@@ -214,7 +226,11 @@ function GenerateTab() {
 }
 
 /* ===== Chat Tab ===== */
-function ChatTab() {
+interface ChatTabProps {
+  initialContext?: ImportedRecipeContext | null;
+}
+
+function ChatTab({ initialContext }: ChatTabProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -223,12 +239,21 @@ function ChatTab() {
   const [savedIndex, setSavedIndex] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
+
+  // When arriving from ImportTab with a recipe context, pre-fill a customization request
+  useEffect(() => {
+    if (!initialContext || initializedRef.current) return;
+    initializedRef.current = true;
+    const prompt = `I just imported a community recipe called "${initialContext.name}". Here is the profile JSON:\n\n\`\`\`json\n${initialContext.jsonText}\n\`\`\`\n\nPlease analyze this profile and suggest how I can customize it to suit my taste. Consider: adjusting temperature, pressure phases, and timing for better extraction. Ask me about my preferences if needed.`;
+    setInput(prompt);
+  }, [initialContext]);
 
   const handleApplyRecipe = async (content: string, index: number) => {
     setSavingIndex(index);
@@ -396,11 +421,17 @@ function parseProfile(text: string): { profile: GaggiMateProfile; valid: boolean
   }
 }
 
-function ImportTab() {
+interface ImportTabProps {
+  onCustomize: (ctx: ImportedRecipeContext) => void;
+}
+
+function ImportTab({ onCustomize }: ImportTabProps) {
   const [name, setName] = useState("");
   const [jsonText, setJsonText] = useState("");
   const [source, setSource] = useState("");
   const [result, setResult] = useState<string | null>(null);
+  const [importedName, setImportedName] = useState<string | null>(null);
+  const [importedJson, setImportedJson] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [parseResult, setParseResult] = useState<{ profile: GaggiMateProfile; valid: boolean } | null>(null);
@@ -437,12 +468,16 @@ function ImportTab() {
     setResult(null);
 
     try {
+      const savedName = name.trim();
+      const savedJson = jsonText;
       await importRecipeRaw({
-        name: name.trim(),
+        name: savedName,
         json_text: jsonText,
         source: source.trim() || undefined,
       });
       setResult("インポート成功！レシピが保存されました。");
+      setImportedName(savedName);
+      setImportedJson(savedJson);
       setName("");
       setJsonText("");
       setSource("");
@@ -571,7 +606,43 @@ function ImportTab() {
       </button>
 
       {error && <p style={{ color: "var(--accent)", marginTop: 12 }}>エラー: {error}</p>}
-      {result && <p style={{ color: "var(--green)", marginTop: 12 }}>{result}</p>}
+      {result && (
+        <div style={{ marginTop: 16 }}>
+          <p style={{ color: "var(--green)", marginBottom: 12 }}>{result}</p>
+          <div style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>次のステップ</div>
+              <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+                このレシピをLLMで自分向けにカスタマイズできます。過去のショットデータや好みに合わせた調整をAIが提案します。
+              </div>
+            </div>
+            <div className="flex gap-8">
+              <Link to="/recipes" style={{ flex: 1 }}>
+                <button className="btn btn-secondary" style={{ width: "100%" }}>
+                  Recipesで確認 →
+                </button>
+              </Link>
+              {importedName && importedJson && (
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={() => onCustomize({ name: importedName, jsonText: importedJson })}
+                >
+                  LLMでカスタマイズ →
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

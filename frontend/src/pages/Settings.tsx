@@ -76,6 +76,53 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from(rawData, (char) => char.charCodeAt(0));
 }
 
+const DOSE_OPTIONS = [16, 18, 25] as const;
+
+function DefaultDoseSelector({ onToast }: { onToast: (msg: string) => void }) {
+  const [selected, setSelected] = useState<number>(
+    parseInt(localStorage.getItem("default_dose_g") ?? "18", 10)
+  );
+
+  const handleSelect = (g: number) => {
+    localStorage.setItem("default_dose_g", String(g));
+    setSelected(g);
+    onToast(`デフォルトドーズを${g}gに設定しました`);
+  };
+
+  return (
+    <div className="card">
+      <h3>抽出設定</h3>
+      <div className="form-group">
+        <label>デフォルトドーズ量</label>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          {DOSE_OPTIONS.map((g) => (
+            <button
+              key={g}
+              onClick={() => handleSelect(g)}
+              style={{
+                flex: 1,
+                padding: "10px 0",
+                fontSize: 15,
+                fontWeight: selected === g ? 700 : 400,
+                borderRadius: "var(--radius)",
+                border: `2px solid ${selected === g ? "#2ecc71" : "#444"}`,
+                background: selected === g ? "rgba(46,204,113,0.15)" : "var(--surface)",
+                color: selected === g ? "#2ecc71" : "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              {g}g
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>
+          レシピのビジュアルエディタで使用するデフォルトのドーズ量
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const DEFAULT_SETTINGS: Settings = {
   gaggimate_host: "localhost",
   gaggimate_ws_port: 8765,
@@ -325,6 +372,8 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      <DefaultDoseSelector onToast={(msg) => { setSaveToast(msg); setTimeout(() => setSaveToast(null), 2000); }} />
 
       <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>

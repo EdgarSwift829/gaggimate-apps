@@ -1,0 +1,11 @@
+## Shot Data
+- Duration: {duration}s
+- Dose: {dose_g}g → Yield: {yield_g}g (ratio: {yield_ratio}x)
+- Avg pressure: {avg_pressure}bar / Peak: {peak_pressure}bar
+- Avg temperature: {avg_temp}°C
+- Avg flow: {avg_flow}ml/s
+{grind_line}{bean_line}
+{flags_section}
+{past_section}
+## User Feedback
+{feedback}

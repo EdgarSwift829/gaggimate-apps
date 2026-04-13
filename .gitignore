@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# Data
+backend/data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.env.local
+logs/
+gaggimate.pids

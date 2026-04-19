@@ -51,9 +51,9 @@ def analyze_shot(
     elif time_diff > 8:
         flags.append(f"抽出時間が目標より{time_diff:.0f}秒長い（挽き目が細すぎる可能性）")
 
-    if yield_ratio < 1.5:
+    if yield_ratio < 1.7:
         flags.append(f"収率が低い（{yield_ratio:.2f}x）— ドーズ過多 or 抽出不足")
-    elif yield_ratio > 3.0:
+    elif yield_ratio > 2.5:
         flags.append(f"収率が高い（{yield_ratio:.2f}x）— 過抽出の可能性")
 
     if peak_pressure > 10.5:

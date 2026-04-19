@@ -191,6 +191,31 @@ function ProfileVisualEditor({ profile, onChange }: ProfileVisualEditorProps) {
                 boxSizing: "border-box",
               }}
             />
+            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+              {[16, 18, 25].map((g) => {
+                const defaultDose = parseInt(localStorage.getItem("default_dose_g") ?? "18", 10);
+                const active = profile.dose_g === g;
+                const isDefault = !profile.dose_g && g === defaultDose;
+                return (
+                  <button
+                    key={g}
+                    onClick={() => update({ dose_g: g })}
+                    style={{
+                      flex: 1,
+                      padding: "3px 0",
+                      fontSize: 12,
+                      borderRadius: "var(--radius)",
+                      border: `1px solid ${active ? "#2ecc71" : isDefault ? "#f39c12" : "#444"}`,
+                      background: active ? "rgba(46,204,113,0.15)" : isDefault ? "rgba(243,156,18,0.1)" : "var(--surface)",
+                      color: active ? "#2ecc71" : isDefault ? "#f39c12" : "var(--text-muted)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {g}g{isDefault ? " ★" : ""}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div style={{ flex: 1 }}>
             <label style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>目標抽出量 (g)</label>

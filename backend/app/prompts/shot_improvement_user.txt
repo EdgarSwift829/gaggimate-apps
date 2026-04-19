@@ -4,6 +4,7 @@
 - Avg pressure: {avg_pressure}bar / Peak: {peak_pressure}bar
 - Avg temperature: {avg_temp}°C
 - Avg flow: {avg_flow}ml/s
+- Target: 25-35s, ratio 1:2 (yield ~{target_yield}g)
 {grind_line}{bean_line}
 {flags_section}
 {past_section}

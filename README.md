@@ -15,19 +15,46 @@ Gaggia Classic E24
 Windows PC
   ├── FastAPI バックエンド
   │   ├── WebSocket接続・データ受信
-  │   ├── Webhook受信・ショット保存
-  │   ├── 数値分析（収率・圧力・時間）
-  │   ├── SQLiteにショットログ保存
-  │   └── LM StudioにHTTP API問い合わせ
+  │   ├── Webhook受信・ショット自動保存
+  │   ├── 数値分析（収率・圧力・温度・異常検知）
+  │   ├── SQLiteにショットログ永続保存
+  │   ├── LM StudioにHTTP API問い合わせ
+  │   └── Web Push通知
   ├── React フロントエンド
   │   ├── ホーム（温度・圧力・スタート）
   │   ├── 抽出中（リアルタイムグラフ）
   │   ├── 抽出後（フィードバック + LLM提案）
-  │   ├── レシピ管理
-  │   └── ショットログ
+  │   ├── レシピ管理 + AIカスタマイズ
+  │   ├── 分析ダッシュボード + 圧力カーブ比較
+  │   └── ショットログ + トレンド分析
   └── LM Studio (ローカルLLM)
         └── Qwen2.5:14B 推奨
 ```
+
+## 機能一覧
+
+### 抽出管理
+- リアルタイム圧力・温度・重量・フローグラフ
+- レシピ選択 → ワンタッチ抽出開始
+- ショット完了時にWebhookで自動ログ保存
+- Web Push通知（抽出完了・LLM提案完了）
+
+### フィードバック & LLM分析
+- 抽出後に豆・グラインド・感想・スコアを入力
+- Python数値分析（収率・圧力・時間の異常検知）
+- ローカルLLMが具体的な改善アクションを3つ提案
+- 過去ショットとの比較分析
+
+### レシピ管理
+- 一覧・お気に入り・ソート（評価順/使用頻度順/作成日順）
+- LLMによるレシピ自動生成（豆・フレーバー指定）
+- AIとの対話型レシピカスタマイズ
+- コミュニティレシピJSON取り込み
+
+### 分析 & トレンド
+- ダッシュボード（総ショット数・平均スコア・スコア推移）
+- 複数ショットの圧力カーブ重ね表示
+- 豆別・レシピ別パフォーマンストレンド
 
 ## クイックスタート
 
@@ -59,10 +86,19 @@ docker compose up --build
 # http://localhost:5173 でアクセス
 ```
 
+### LM Studio（ローカルLLM）
+
+1. [LM Studio](https://lmstudio.ai/) をインストール
+2. Qwen2.5:14B モデルをダウンロード
+3. Local Server をオンにする（デフォルト: localhost:1234）
+4. 設定画面で「LM Studio 接続テスト」ボタンで確認
+
 ### テスト実行
 
 ```bash
+# シミュレーター + バックエンドを起動した状態で
 python tests/test_integration.py
+# E2Eテスト: 40/41項目（LLM接続テストはLM Studio起動時のみ）
 ```
 
 ## 技術スタック
@@ -76,42 +112,87 @@ python tests/test_integration.py
 | データベース | SQLite |
 | 通知 | Web Push API |
 | CI/CD | GitHub Actions |
+| コンテナ | Docker Compose |
 
-## API エンドポイント
+## API エンドポイント（31個）
 
 | カテゴリ | エンドポイント |
 |---|---|
 | ショット | `GET/POST /api/shots`, `POST /api/shots/{id}/feedback`, `GET /api/shots/{id}/timeseries` |
 | 豆 | `GET/POST/PUT/DELETE /api/beans` |
 | レシピ | `GET/POST /api/recipes`, `PATCH /api/recipes/{id}/favorite`, `POST /api/recipes/customize` |
+| AIレシピ | `POST /api/recipes/ai/generate`, `POST /api/recipes/ai/chat`, `POST /api/recipes/import` |
 | マシン | `GET /api/machine/status`, `POST /api/machine/brew/start`, `POST /api/machine/brew/stop` |
+| 分析 | `GET /api/analytics/dashboard`, `GET /api/analytics/compare`, `GET /api/analytics/trends` |
 | LLM | `GET /api/llm/test`, `POST /api/llm/suggest`, `GET /api/llm/suggestions/{id}` |
-| プロンプト | `GET/PUT /api/prompts/{name}` |
+| プロンプト | `GET /api/prompts`, `GET/PUT /api/prompts/{name}` |
 | 通知 | `GET /api/notifications/vapid-key`, `POST /api/notifications/subscribe` |
+| ヘルス | `GET /api/health` |
+
+## 画面一覧
+
+| 画面 | パス | 説明 |
+|---|---|---|
+| ホーム | `/` | マシン状態・レシピ選択・抽出開始 |
+| 抽出中 | `/brewing` | リアルタイムグラフ・ストップボタン |
+| 抽出結果 | `/shot/:id` | サマリー・フィードバック入力・LLM提案 |
+| レシピ | `/recipes` | 一覧・お気に入り・ソート・LLMカスタマイズ |
+| AIレシピ | `/recipe-ai` | AI生成・対話カスタマイズ・インポート |
+| ログ | `/log` | ショット一覧 |
+| 分析 | `/dashboard` | ダッシュボード・スコア推移 |
+| 比較 | `/compare` | 圧力カーブ重ね表示 |
+| トレンド | `/trends` | 豆別・レシピ別パフォーマンス |
+| 設定 | `/settings` | 接続設定・LM Studio・通知 |
 
 ## プロジェクト構成
 
 ```
 gaggimate-apps/
-├── backend/          # FastAPI バックエンド
+├── backend/              # FastAPI バックエンド
 │   ├── app/
-│   │   ├── main.py           # エントリーポイント
-│   │   ├── database.py       # SQLite スキーマ
-│   │   ├── config.py         # 設定（環境変数対応）
-│   │   ├── routers/          # REST API ルーター
-│   │   ├── services/         # ビジネスロジック
-│   │   └── prompts/          # LLMプロンプトテンプレート
+│   │   ├── main.py               # エントリーポイント + WS中継
+│   │   ├── database.py           # SQLiteスキーマ（8テーブル）
+│   │   ├── config.py             # 設定（環境変数対応）
+│   │   ├── routers/
+│   │   │   ├── shots.py          # ショットCRUD + フィードバック
+│   │   │   ├── beans.py          # 豆マスターCRUD
+│   │   │   ├── recipes.py        # レシピCRUD + お気に入り
+│   │   │   ├── recipe_ai.py      # AI生成・対話・インポート
+│   │   │   ├── analytics.py      # ダッシュボード・比較・トレンド
+│   │   │   ├── machine.py        # マシン制御
+│   │   │   ├── webhook.py        # Webhook受信
+│   │   │   ├── llm_api.py        # LLM接続テスト・提案
+│   │   │   ├── notifications.py  # Web Push購読管理
+│   │   │   └── prompts.py        # プロンプトテンプレート管理
+│   │   ├── services/
+│   │   │   ├── gaggimate_ws.py   # GaggiMate WebSocketクライアント
+│   │   │   ├── llm.py            # LM Studio連携
+│   │   │   ├── analysis.py       # 数値分析・異常検知
+│   │   │   ├── notification.py   # Web Push送信
+│   │   │   └── prompt_manager.py # テンプレート管理
+│   │   └── prompts/              # LLMプロンプトテンプレート
+│   ├── Dockerfile
 │   └── pyproject.toml
-├── frontend/         # React フロントエンド
-│   └── src/
-│       ├── pages/            # 各画面
-│       ├── api.ts            # APIクライアント
-│       └── App.tsx           # ルーティング
-├── simulator/        # GaggiMateダミーシミュレーター
-├── tests/            # 結合テスト
-├── docs/             # 仕様書・ロードマップ
+├── frontend/             # React フロントエンド
+│   ├── src/
+│   │   ├── pages/                # 10画面
+│   │   ├── api.ts                # APIクライアント
+│   │   └── App.tsx               # ルーティング
+│   ├── public/sw.js              # Service Worker（Push通知）
+│   └── Dockerfile
+├── simulator/            # GaggiMateダミーシミュレーター
+│   ├── gaggimate_sim.py          # WebSocket + Webhook送信
+│   ├── test_client.py            # テストクライアント
+│   └── Dockerfile
+├── tests/
+│   └── test_integration.py       # E2Eテスト（40項目）
+├── docs/
+│   ├── SPEC.md                   # 開発仕様書 v2.0
+│   ├── ROADMAP.md                # ロードマップ
+│   └── PROMPT_DESIGN.md          # LLMプロンプト設計書
 ├── docker-compose.yml
-└── .github/workflows/ci.yml
+├── .github/workflows/ci.yml
+└── .env.example
 ```
 
 ## ドキュメント

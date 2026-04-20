@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import Home from "./pages/Home";
 import Brewing from "./pages/Brewing";
@@ -25,10 +25,26 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean }[] = [
 
 function App() {
   const [collapsed, setCollapsed] = useState(false);
+  const touchStartX = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    if (collapsed && touchStartX.current < 40 && deltaX > 50) {
+      setCollapsed(false);
+    }
+  };
 
   return (
     <BrowserRouter>
-      <div className="app">
+      <div
+        className="app"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <nav className={`sidebar${collapsed ? " collapsed" : ""}`}>
           {collapsed ? (
             <div className="sidebar-strip" onClick={() => setCollapsed(false)}>

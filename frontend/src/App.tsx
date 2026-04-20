@@ -13,14 +13,14 @@ import RecipeAI from "./pages/RecipeAI";
 import MobileConnect from "./pages/MobileConnect";
 import "./App.css";
 
-const NAV_ITEMS: { to: string; icon: string; label: string; end?: boolean }[] = [
-  { to: "/", icon: "🏠", label: "ホーム", end: true },
-  { to: "/recipes", icon: "📋", label: "レシピ" },
-  { to: "/log", icon: "📊", label: "ログ" },
-  { to: "/dashboard", icon: "📈", label: "分析" },
-  { to: "/recipe-ai", icon: "🤖", label: "AI" },
-  { to: "/mobile", icon: "📱", label: "スマホ" },
-  { to: "/settings", icon: "⚙️", label: "設定" },
+const NAV_ITEMS: { to: string; label: string; end?: boolean }[] = [
+  { to: "/", label: "ホーム", end: true },
+  { to: "/recipes", label: "レシピ" },
+  { to: "/log", label: "ログ" },
+  { to: "/dashboard", label: "分析" },
+  { to: "/recipe-ai", label: "AI レシピ" },
+  { to: "/mobile", label: "スマホ連携" },
+  { to: "/settings", label: "設定" },
 ];
 
 function App() {
@@ -30,27 +30,25 @@ function App() {
     <BrowserRouter>
       <div className="app">
         <nav className={`sidebar${collapsed ? " collapsed" : ""}`}>
-          <h2 onClick={() => setCollapsed(!collapsed)}>
-            {collapsed ? "≡" : "GaggiMate"}
-          </h2>
-          {NAV_ITEMS.map(({ to, icon, label, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={(e) => {
-                if (collapsed) {
-                  e.preventDefault();
-                  setCollapsed(false);
-                } else {
-                  setCollapsed(true);
-                }
-              }}
-            >
-              <span className="nav-icon">{icon}</span>
-              <span className="nav-label">{label}</span>
-            </NavLink>
-          ))}
+          {collapsed ? (
+            <div className="sidebar-strip" onClick={() => setCollapsed(false)}>
+              ›
+            </div>
+          ) : (
+            <>
+              <h2>GaggiMate</h2>
+              {NAV_ITEMS.map(({ to, label, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  onClick={() => setCollapsed(true)}
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
         <main className="content">
           <Routes>

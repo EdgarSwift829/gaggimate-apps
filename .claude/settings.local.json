@@ -5,7 +5,19 @@
       "Skill(claude-api)",
       "Bash(node \"C:/Users/yusuk/.claude/hooks/session-started.js\")",
       "Bash(echo \"exit: $?\")",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(python3:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:7878/)",
+      "Bash(pkill -f magi-dashboard.py)",
+      "Bash(git -C \"C:/Users/yusuk/.claude/magi-system/\" status)",
+      "Bash(cp \"C:/Users/yusuk/.claude/hooks/pretooluse-guard.js\" \"C:/Users/yusuk/.claude/magi-system/pretooluse-guard.js\")",
+      "Bash(cp \"C:/Users/yusuk/.claude/hooks/session-started.js\" \"C:/Users/yusuk/.claude/magi-system/session-started.js\")",
+      "Bash(git -C \"C:/Users/yusuk/.claude/magi-system/\" add pretooluse-guard.js session-started.js magi.py magi-cli.js magi-dashboard.py)",
+      "Bash(git -C \"C:/Users/yusuk/.claude/magi-system/\" commit -m \"feat: complete MAGI system v2 implementation\")",
+      "Bash(kill %1)",
+      "Bash(tasklist /FI \"IMAGENAME eq python3.exe\")",
+      "Bash(tasklist /FI \"IMAGENAME eq python.exe\")",
+      "Bash(netstat -ano)"
     ]
   }
 }

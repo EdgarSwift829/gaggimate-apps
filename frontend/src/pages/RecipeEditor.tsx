@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getRecipes, createRecipe, updateRecipe } from "../api";
 
@@ -437,6 +437,13 @@ function PreinfusionModal({ isOpen, onClose, onApply }: PreinfusionModalProps) {
   );
 }
 
+// --- Types ---
+interface UndoSnapshot {
+  recipe: RecipeEditorData;
+  extractionTimeSec: number;
+  targetVolumeMl: number;
+}
+
 // --- Main RecipeEditor Component ---
 export default function RecipeEditor() {
   const navigate = useNavigate();
@@ -449,6 +456,10 @@ export default function RecipeEditor() {
   const [preinfusionModal, setPreinfusionModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const undoStack = useRef<UndoSnapshot[]>([]);
+  const handleUndoRef = useRef<() => void>(() => {});
 
   // Initialize
   useEffect(() => {
@@ -507,9 +518,54 @@ export default function RecipeEditor() {
     }
   }, [id, navigate]);
 
+  const pushUndo = useCallback(() => {
+    if (!recipe) return;
+    undoStack.current = [
+      ...undoStack.current.slice(-19),
+      { recipe: JSON.parse(JSON.stringify(recipe)), extractionTimeSec, targetVolumeMl },
+    ];
+    setCanUndo(true);
+    setIsDirty(true);
+  }, [recipe, extractionTimeSec, targetVolumeMl]);
+
+  // Keep handleUndoRef current so keyboard handler doesn't go stale
+  handleUndoRef.current = () => {
+    const snapshot = undoStack.current.pop();
+    if (!snapshot) return;
+    setRecipe(snapshot.recipe);
+    setExtractionTimeSec(snapshot.extractionTimeSec);
+    setTargetVolumeMl(snapshot.targetVolumeMl);
+    setCanUndo(undoStack.current.length > 0);
+  };
+
+  // Keyboard shortcuts: Ctrl+Z = undo, Backspace outside input = prevent browser back
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "Backspace" && !isInput) e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        handleUndoRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Warn on unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
   if (!recipe || loading) return <div style={{ padding: 24 }}>読込中...</div>;
 
   const updateCurve = (metric: Metric, points: ControlPoint[]) => {
+    pushUndo();
     const updated = { ...recipe, curves: { ...recipe.curves, [metric]: points } };
 
     // Auto-scale flow if we're editing it
@@ -522,6 +578,7 @@ export default function RecipeEditor() {
   };
 
   const handleAddPreinfusion = (state: PreinfusionState) => {
+    pushUndo();
     const totalPreinfusionTime = state.wettingTimeSec + state.steepTimeSec;
 
     // Insert preinfusion segments at the start
@@ -587,6 +644,7 @@ export default function RecipeEditor() {
           json: JSON.stringify(data),
         });
       }
+      setIsDirty(false);
       navigate("/recipes");
     } catch {
       alert("保存に失敗しました");
@@ -650,7 +708,7 @@ export default function RecipeEditor() {
       </div>
 
       {/* Metric selector */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, alignItems: "center" }}>
         {(["temp", "pressure", "flow"] as Metric[]).map((m) => (
           <button
             key={m}
@@ -668,6 +726,21 @@ export default function RecipeEditor() {
             {m === "temp" ? "温度" : m === "pressure" ? "気圧" : "流量"}
           </button>
         ))}
+        <button
+          onClick={handleUndoRef.current}
+          disabled={!canUndo}
+          title="元に戻す (Ctrl+Z)"
+          style={{
+            marginLeft: "auto",
+            padding: "8px 14px",
+            background: "var(--surface)",
+            color: canUndo ? "var(--text)" : "var(--text-muted)",
+            border: "1px solid #444",
+            borderRadius: "var(--radius)",
+            cursor: canUndo ? "pointer" : "default",
+            fontSize: 16,
+          }}
+        >↩</button>
       </div>
 
       {/* Graph editors */}

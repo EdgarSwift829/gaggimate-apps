@@ -2,9 +2,9 @@ services:
   simulator:
     build: ./simulator
     ports:
-      - "8765:8765"
+      - "8766:8766"
     healthcheck:
-      test: ["CMD", "python", "-c", "import asyncio, websockets; asyncio.get_event_loop().run_until_complete(websockets.connect('ws://localhost:8765/ws'))"]
+      test: ["CMD", "python", "-c", "import asyncio, websockets; asyncio.get_event_loop().run_until_complete(websockets.connect('ws://localhost:8766/ws'))"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -12,10 +12,10 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - GAGGIMATE_HOST=simulator
-      - GAGGIMATE_WS_PORT=8765
+      - GAGGIMATE_WS_PORT=8766
       - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
       - LM_STUDIO_MODEL=${LM_STUDIO_MODEL:-local-model}
     volumes:
@@ -27,7 +27,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "5173:5173"
+      - "5174:5174"
     depends_on:
       - backend
 

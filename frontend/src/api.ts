@@ -1,4 +1,4 @@
-const API_BASE = `http://${window.location.hostname}:8000`;
+const API_BASE = `http://${window.location.hostname}:8001`;
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

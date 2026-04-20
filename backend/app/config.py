@@ -10,13 +10,13 @@ from pathlib import Path
 
 @dataclass
 class Settings:
-    gaggimate_host: str = "localhost"
+    gaggimate_host: str = "gaggimate.local"
     gaggimate_ws_port: int = 8766
     webhook_listen_port: int = 8005
     lm_studio_base_url: str = "http://localhost:1234/v1"
     lm_studio_model: str = "local-model"
     db_path: str = "data/gaggimate.db"
-    mqtt_broker: str = "localhost"
+    mqtt_broker: str = "gaggimate.local"
     mqtt_port: int = 1883
     mqtt_enabled: bool = False
     line_notify_token: str | None = None

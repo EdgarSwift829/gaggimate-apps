@@ -1,11 +1,11 @@
 {
-  "gaggimate_host": "localhost",
+  "gaggimate_host": "gaggimate.local",
   "gaggimate_ws_port": 8765,
   "webhook_listen_port": 8000,
   "lm_studio_base_url": "http://localhost:1234/v1",
   "lm_studio_model": "google/gemma-4-e4b",
   "db_path": "data/gaggimate.db",
-  "mqtt_broker": "localhost",
+  "mqtt_broker": "gaggimate.local",
   "mqtt_port": 1883,
   "line_notify_token": null
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getRecipes, createRecipe, updateRecipe, type Recipe } from "../api";
+import { getRecipes, createRecipe, updateRecipe } from "../api";
 
 // --- Types ---
 type Metric = "temp" | "pressure" | "flow";
@@ -184,7 +184,6 @@ function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEdito
     const y = e.clientY - rect.top;
 
     const newPoints = [...points];
-    const p = newPoints[draggingIndex];
 
     // Don't allow first and last points to move in time
     if (draggingIndex === 0) {

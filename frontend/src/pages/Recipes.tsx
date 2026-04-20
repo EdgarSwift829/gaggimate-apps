@@ -565,10 +565,6 @@ export default function RecipesPage() {
     setSaving(false);
   };
 
-  const handleEdit = (r: Recipe) => {
-    setEditState({ id: r.id, name: r.name, profile_json: r.json });
-  };
-
   const handleEditSave = async () => {
     if (!editState) return;
     setSaving(true);

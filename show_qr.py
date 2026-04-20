@@ -64,10 +64,25 @@ def install_and_retry(url: str) -> str | None:
     return generate_qr_ansi(url)
 
 
+def _enable_ansi_windows() -> None:
+    """Windows CMD で VirtualTerminalProcessing を有効化する。"""
+    try:
+        import ctypes
+        import ctypes.wintypes
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        STD_OUTPUT_HANDLE = -11
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+        mode = ctypes.wintypes.DWORD()
+        kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+    except Exception:
+        os.system("")  # フォールバック
+
+
 def main():
-    # Windows でANSIエスケープシーケンスを有効化
     if sys.platform == "win32":
-        os.system("")
+        _enable_ansi_windows()
 
     port = sys.argv[1] if len(sys.argv) > 1 else "5174"
     ip = get_local_ip()

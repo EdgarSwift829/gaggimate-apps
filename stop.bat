@@ -21,8 +21,8 @@ wmic process where "commandline like '%%gaggimate_sim%%'" delete > nul 2>&1
 REM --- vite（フロントエンド）停止 ---
 wmic process where "commandline like '%%vite%%'" delete > nul 2>&1
 
-REM --- ポート8001・8766・5174 を使っているプロセスを念のため解放 ---
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8001 "') do (
+REM --- ポート8005・8766・5174 を使っているプロセスを念のため解放 ---
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8005 "') do (
     taskkill /F /PID %%a > nul 2>&1
 )
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8766 "') do (

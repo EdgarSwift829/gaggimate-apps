@@ -1,4 +1,4 @@
-const API_BASE = `http://${window.location.hostname}:8001`;
+const API_BASE = `http://${window.location.hostname}:8005`;
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -171,7 +171,7 @@ export const saveSettings = (data: Settings) =>
 
 // --- WebSocket ---
 export function connectStatusWS(onMessage: (data: MachineStatus) => void): WebSocket {
-  const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/status`);
+  const ws = new WebSocket(`ws://${window.location.hostname}:8005/ws/status`);
   ws.onmessage = (e) => {
     try {
       onMessage(JSON.parse(e.data));

@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8766
 
-CMD ["python", "gaggimate_sim.py", "--host", "0.0.0.0", "--ws-port", "8766", "--webhook-url", "http://backend:8001/webhook"]
+CMD ["python", "gaggimate_sim.py", "--host", "0.0.0.0", "--ws-port", "8766", "--webhook-url", "http://backend:8005/webhook"]

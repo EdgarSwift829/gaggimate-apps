@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getHealth, getSettings, saveSettings, type Settings } from "../api";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = `http://${window.location.hostname}:8005`;
 
 interface LLMTestResult {
   connected: boolean;

@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import Brewing from "./pages/Brewing";
 import ShotResult from "./pages/ShotResult";
 import RecipesPage from "./pages/Recipes";
+import RecipeEditor from "./pages/RecipeEditor";
 import LogPage from "./pages/Log";
 import SettingsPage from "./pages/Settings";
 import Dashboard from "./pages/Dashboard";
@@ -72,6 +73,8 @@ function App() {
             <Route path="/brewing" element={<Brewing />} />
             <Route path="/shot/:id" element={<ShotResult />} />
             <Route path="/recipes" element={<RecipesPage />} />
+            <Route path="/recipe-editor" element={<RecipeEditor />} />
+            <Route path="/recipe-editor/:id" element={<RecipeEditor />} />
             <Route path="/log" element={<LogPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/compare" element={<Compare />} />

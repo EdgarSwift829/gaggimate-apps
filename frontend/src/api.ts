@@ -105,6 +105,8 @@ export const getRecipes = (sort = "created_at", favOnly = false, status = "activ
   if (community !== undefined) params.set("community", String(community));
   return fetchJSON<Recipe[]>(`/api/recipes?${params}`);
 };
+export const createRecipe = (data: { name: string; json: string }) =>
+  fetchJSON<Recipe>("/api/recipes", { method: "POST", body: JSON.stringify({ name: data.name, profile_json: data.json }) });
 export const toggleFavorite = (id: number) =>
   fetchJSON(`/api/recipes/${id}/favorite`, { method: "PATCH" });
 export const toggleArchive = (id: number) =>
@@ -120,6 +122,8 @@ export const deleteRecipe = (id: number, force = false) =>
   fetchJSON<{ ok: boolean; archived: boolean }>(`/api/recipes/${id}${force ? "?force=true" : ""}`, { method: "DELETE" });
 export const getRecipeUsage = (id: number) =>
   fetchJSON<{ recipe_id: number; shot_count: number }>(`/api/recipes/${id}/usage`);
+export const syncFromDevice = () =>
+  fetchJSON<{ synced: number }>("/api/recipes/sync-from-device", { method: "POST" });
 
 // --- LLM ---
 export const testLLM = () => fetchJSON<{ connected: boolean; base_url: string; available_models?: string[]; error?: string }>("/api/llm/test");

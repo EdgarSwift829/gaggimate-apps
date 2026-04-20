@@ -24,6 +24,7 @@ class GaggiMateWSClient:
         self._running = False
         self._brew_buffer: list[dict] = []
         self._is_brewing = False
+        self._pending: dict[str, asyncio.Future] = {}
 
     @property
     def url(self) -> str:
@@ -73,6 +74,12 @@ class GaggiMateWSClient:
 
     async def _handle_message(self, data: dict) -> None:
         tp = data.get("tp", "")
+        rid = data.get("rid")
+
+        # Request-Response パターン: rid ベースで pending Future を resolve
+        if rid and rid in self._pending:
+            self._pending[rid].set_result(data)
+            del self._pending[rid]
 
         if tp == "sub:status":
             mode_raw = data.get("mode", 0)
@@ -107,6 +114,30 @@ class GaggiMateWSClient:
         logger.info("Sent command: %s (rid=%s)", tp, rid)
         return rid
 
+    async def send_and_wait(self, tp: str, timeout: float = 5.0, **kwargs) -> dict:
+        """コマンドを送信して、レスポンスを待機する（タイムアウト5秒）."""
+        if not self.ws:
+            raise ConnectionError("Not connected to GaggiMate")
+        rid = uuid.uuid4().hex[:8]
+        msg = {"tp": tp, "rid": rid, **kwargs}
+
+        # Future を登録
+        future: asyncio.Future = asyncio.Future()
+        self._pending[rid] = future
+
+        try:
+            await self.ws.send(json.dumps(msg))
+            logger.info("Sent command: %s (rid=%s)", tp, rid)
+
+            # レスポンスを待機
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+        except asyncio.TimeoutError:
+            logger.warning("Timeout waiting for response (rid=%s)", rid)
+            if rid in self._pending:
+                del self._pending[rid]
+            raise TimeoutError(f"No response for {tp} (rid={rid})")
+
     async def start_brew(self) -> str:
         self._brew_buffer.clear()
         return await self.send_command("req:brew:start")
@@ -114,8 +145,11 @@ class GaggiMateWSClient:
     async def stop_brew(self) -> str:
         return await self.send_command("req:brew:stop")
 
-    async def list_profiles(self) -> str:
-        return await self.send_command("req:profiles:list")
+    async def list_profiles(self) -> list[dict]:
+        """プロファイル一覧を取得."""
+        response = await self.send_and_wait("req:profiles:list")
+        profiles = response.get("profiles", [])
+        return profiles
 
     async def select_profile(self, profile: dict) -> str:
         return await self.send_command("req:profile:select", profile=profile)

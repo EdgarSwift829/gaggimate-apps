@@ -332,8 +332,7 @@ export default function SettingsPage() {
               <>
                 <div style={{ color: "#2ecc71", marginBottom: 8 }}>接続OK</div>
                 <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  URL: {llmResult.base_url}<br />
-                  利用可能モデル: {llmResult.available_models?.join(", ") || "なし"}
+                  URL: {llmResult.base_url}
                 </div>
               </>
             ) : (

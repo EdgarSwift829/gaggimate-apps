@@ -110,102 +110,100 @@ interface GraphEditorProps {
 function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-  const [lastTapTime, setLastTapTime] = useState(0);
-  const [lastTapPos, setLastTapPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [addMode, setAddMode] = useState(false);
+  const [eraseMode, setEraseMode] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
   const maxV = Y_MAX[metric];
   const color = Y_COLORS[metric];
 
-  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    const svg = svgRef.current;
-    if (!svg) return;
+  const getSvgPos = (e: React.PointerEvent<SVGSVGElement>) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
 
-    const rect = svg.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Check if clicking on a control point
-    let hitIndex = -1;
+  const hitTest = (x: number, y: number) => {
     for (let i = 0; i < points.length; i++) {
       const px = timeToX(points[i].t, extractionTimeSec);
       const py = valueToY(points[i].v, maxV);
-      const dist = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
-      if (dist < 10) {
-        hitIndex = i;
-        break;
+      if (Math.sqrt((x - px) ** 2 + (y - py) ** 2) < 20) return i;
+    }
+    return -1;
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const { x, y } = getSvgPos(e);
+    const hitIndex = hitTest(x, y);
+
+    if (addMode) {
+      const t = xToTime(x, extractionTimeSec);
+      let v = yToValue(y, maxV);
+      if (metric === "flow" && v < 0.5) v = 0;
+      onChange([...points, { t, v }].sort((a, b) => a.t - b.t));
+      setAddMode(false);
+      return;
+    }
+
+    if (eraseMode) {
+      if (hitIndex !== -1 && points.length > 2) {
+        onChange(points.filter((_, i) => i !== hitIndex));
       }
+      setEraseMode(false);
+      return;
     }
 
     if (hitIndex !== -1) {
-      // Dragging existing point
       setDraggingIndex(hitIndex);
-
-      // Double-tap detection
-      const now = Date.now();
-      if (lastTapPos && now - lastTapTime < 300 && Math.abs(lastTapPos.x - x) < 10 && Math.abs(lastTapPos.y - y) < 10) {
-        // Double-tap: delete
-        if (points.length > 2) {
-          onChange(points.filter((_, i) => i !== hitIndex));
-        }
-        setLastTapTime(0);
-      } else {
-        setLastTapTime(now);
-        setLastTapPos({ x, y });
-      }
+      setSelectedIndex(hitIndex);
+      dragStartPos.current = { x, y };
     } else {
-      // Single tap on empty area: add point
-      const t = xToTime(x, extractionTimeSec);
-      const v = yToValue(y, maxV);
-
-      // Zero-snap for flow
-      if (metric === "flow" && v < 0.5) {
-        const newPoint: ControlPoint = { t, v: 0 };
-        const newPoints = [...points, newPoint].sort((a, b) => a.t - b.t);
-        onChange(newPoints);
-      } else {
-        const newPoint: ControlPoint = { t, v };
-        const newPoints = [...points, newPoint].sort((a, b) => a.t - b.t);
-        onChange(newPoints);
-      }
-
-      setLastTapTime(0);
-      setLastTapPos({ x, y });
+      setSelectedIndex(null);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (draggingIndex === null) return;
+    if (draggingIndex === null || !svgRef.current) return;
+    const { x, y } = getSvgPos(e);
 
-    const svg = svgRef.current;
-    if (!svg) return;
-
-    const rect = svg.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // スライドアウト削除判定（端点以外）
+    const isOutside = x < PADDING - 20 || x > SVG_W - PADDING + 20 || y < -20 || y > SVG_H + 20;
+    if (isOutside && draggingIndex !== 0 && draggingIndex !== points.length - 1) {
+      setPendingDelete(draggingIndex);
+      return;
+    }
+    setPendingDelete(null);
 
     const newPoints = [...points];
-
-    // Don't allow first and last points to move in time
     if (draggingIndex === 0) {
-      newPoints[draggingIndex] = { t: 0, v: yToValue(y, maxV) };
+      newPoints[0] = { t: 0, v: yToValue(y, maxV) };
     } else if (draggingIndex === points.length - 1) {
       newPoints[draggingIndex] = { t: extractionTimeSec, v: yToValue(y, maxV) };
     } else {
-      const newT = xToTime(x, extractionTimeSec);
       let newV = yToValue(y, maxV);
-
-      // Zero-snap for flow
-      if (metric === "flow" && newV < 0.5) {
-        newV = 0;
-      }
-
-      newPoints[draggingIndex] = { t: newT, v: newV };
+      if (metric === "flow" && newV < 0.5) newV = 0;
+      newPoints[draggingIndex] = { t: xToTime(x, extractionTimeSec), v: newV };
     }
-
     onChange(newPoints);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pendingDelete !== null) {
+      onChange(points.filter((_, i) => i !== pendingDelete));
+      setPendingDelete(null);
+      setSelectedIndex(null);
+    } else if (draggingIndex !== null && dragStartPos.current) {
+      const { x, y } = getSvgPos(e);
+      const moved = Math.sqrt((x - dragStartPos.current.x) ** 2 + (y - dragStartPos.current.y) ** 2);
+      if (moved < 6) {
+        // tap — keep selectedIndex for visual feedback
+      } else {
+        setSelectedIndex(null);
+      }
+    }
+    dragStartPos.current = null;
     setDraggingIndex(null);
   };
 
@@ -227,8 +225,30 @@ function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEdito
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
-        <span style={{ color }}>{metric.toUpperCase()}</span> - {metric === "temp" ? "℃" : metric === "pressure" ? "bar" : "ml/s"}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ color, fontSize: 13, fontWeight: 600 }}>
+          {metric === "temp" ? "温度 ℃" : metric === "pressure" ? "気圧 bar" : "流量 ml/s"}
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button
+            onClick={() => { setAddMode((v) => !v); setEraseMode(false); }}
+            style={{
+              padding: "4px 12px", fontSize: 13, borderRadius: "var(--radius)",
+              border: `2px solid ${addMode ? "#2ecc71" : "#444"}`,
+              background: addMode ? "rgba(46,204,113,0.2)" : "var(--surface)",
+              color: addMode ? "#2ecc71" : "var(--text-muted)", cursor: "pointer",
+            }}
+          >＋ポイント</button>
+          <button
+            onClick={() => { setEraseMode((v) => !v); setAddMode(false); }}
+            style={{
+              padding: "4px 12px", fontSize: 13, borderRadius: "var(--radius)",
+              border: `2px solid ${eraseMode ? "#e74c3c" : "#444"}`,
+              background: eraseMode ? "rgba(231,76,60,0.2)" : "var(--surface)",
+              color: eraseMode ? "#e74c3c" : "var(--text-muted)", cursor: "pointer",
+            }}
+          >消しゴム</button>
+        </div>
       </div>
       <svg
         ref={svgRef}
@@ -239,7 +259,7 @@ function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEdito
           background: "var(--surface)",
           border: `1px solid ${color}`,
           borderRadius: "var(--radius)",
-          cursor: "crosshair",
+          cursor: addMode ? "cell" : eraseMode ? "not-allowed" : "default",
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
@@ -290,16 +310,26 @@ function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEdito
         {points.map((p, i) => {
           const x = timeToX(p.t, extractionTimeSec);
           const y = valueToY(p.v, maxV);
+          const isDeleting = i === pendingDelete;
+          const isDragging = i === draggingIndex;
+          const isSelected = i === selectedIndex;
+          const r = isDragging ? 10 : isSelected ? 9 : 6;
           return (
-            <circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={i === draggingIndex ? 8 : 6}
-              fill={color}
-              opacity={i === draggingIndex ? 0.9 : 0.7}
-              style={{ transition: "r 0.1s" }}
-            />
+            <g key={i}>
+              {isSelected && !isDragging && (
+                <circle cx={x} cy={y} r={14} fill={color} opacity={0.2} />
+              )}
+              <circle
+                cx={x}
+                cy={y}
+                r={r}
+                fill={isDeleting ? "#e74c3c" : color}
+                opacity={isDeleting ? 1 : isDragging ? 0.95 : isSelected ? 0.9 : 0.7}
+                stroke={isSelected || isDragging ? "#fff" : "none"}
+                strokeWidth={1.5}
+                style={{ transition: "r 0.1s, fill 0.1s" }}
+              />
+            </g>
           );
         })}
 
@@ -326,7 +356,7 @@ function GraphEditor({ metric, points, extractionTimeSec, onChange }: GraphEdito
         })}
       </svg>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-        タップ = 追加 | ドラッグ = 移動 | ダブルタップ = 削除
+        ＋ポイント → タップ追加 | タップで選択 → ドラッグ | 消しゴム or スライドアウトで削除
       </div>
     </div>
   );

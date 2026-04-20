@@ -29,10 +29,12 @@ function App() {
   const touchStartX = useRef(0);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length > 1) return; // ignore pinch
     touchStartX.current = e.touches[0].clientX;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.changedTouches.length > 1) return; // ignore pinch
     const deltaX = e.changedTouches[0].clientX - touchStartX.current;
     if (collapsed && touchStartX.current < 40 && deltaX > 50) {
       setCollapsed(false);
@@ -67,7 +69,10 @@ function App() {
             </>
           )}
         </nav>
-        <main className="content">
+        <main
+          className="content"
+          onClick={(e) => { if (e.target === e.currentTarget && !collapsed) setCollapsed(true); }}
+        >
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/brewing" element={<Brewing />} />

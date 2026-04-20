@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getRecipes, toggleFavorite, toggleArchive, customizeRecipe, updateRecipe, deleteRecipe, getRecipeUsage, importRecipe, type Recipe } from "../api";
+import { useNavigate } from "react-router-dom";
+import { getRecipes, toggleFavorite, toggleArchive, customizeRecipe, updateRecipe, deleteRecipe, getRecipeUsage, importRecipe, syncFromDevice, type Recipe } from "../api";
 
 // ---------------------------------------------------------------------------
 // Profile types (GaggiMate JSON structure)
@@ -509,6 +510,7 @@ function tabToParams(tab: TabKey): { status: string; community?: boolean } {
 // ---------------------------------------------------------------------------
 
 export default function RecipesPage() {
+  const navigate = useNavigate();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [sort, setSort] = useState("created_at");
   const [favOnly, setFavOnly] = useState(false);
@@ -520,6 +522,7 @@ export default function RecipesPage() {
   const [saving, setSaving] = useState(false);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [archiveModal, setArchiveModal] = useState<{ id: number; name: string; shotCount: number } | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = () => {
     const { status, community } = tabToParams(activeTab);
@@ -616,9 +619,27 @@ export default function RecipesPage() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncFromDevice();
+      alert(`${result.synced}件のプロファイルを同期しました`);
+      load();
+    } catch (e) {
+      console.error("handleSync failed:", e);
+      alert("同期に失敗しました");
+    }
+    setSyncing(false);
+  };
+
   return (
     <div>
-      <h1 className="mb-24">レシピ</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h1>レシピ</h1>
+        <button className="btn btn-primary" onClick={() => navigate("/recipe-editor")}>
+          + 新規作成
+        </button>
+      </div>
 
       {/* タブバー */}
       <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid #333" }}>
@@ -639,17 +660,27 @@ export default function RecipesPage() {
         ))}
       </div>
 
-      {/* フィルター */}
-      <div className="flex gap-16 items-center mb-16">
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ padding: "6px 12px", background: "var(--surface)", color: "var(--text)", border: "1px solid #444", borderRadius: "var(--radius)" }}>
-          <option value="created_at">作成日順</option>
-          <option value="avg_score">評価順</option>
-          <option value="use_count">使用頻度順</option>
-        </select>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)} />
-          お気に入りのみ
-        </label>
+      {/* フィルター & 同期ボタン */}
+      <div className="flex gap-16 items-center mb-16" style={{ justifyContent: "space-between" }}>
+        <div className="flex gap-16 items-center">
+          <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ padding: "6px 12px", background: "var(--surface)", color: "var(--text)", border: "1px solid #444", borderRadius: "var(--radius)" }}>
+            <option value="created_at">作成日順</option>
+            <option value="avg_score">評価順</option>
+            <option value="use_count">使用頻度順</option>
+          </select>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+            <input type="checkbox" checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)} />
+            お気に入りのみ
+          </label>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={handleSync}
+          disabled={syncing}
+          style={{ background: "#2ecc71" }}
+        >
+          {syncing ? "同期中..." : "機器から同期"}
+        </button>
       </div>
 
       {/* レシピ一覧 */}
@@ -692,7 +723,7 @@ export default function RecipesPage() {
                       </button>
                     ) : (
                       <>
-                        <button className="btn btn-secondary" onClick={() => handleEdit(r)} style={{ padding: "3px 10px", fontSize: 12 }}>編集</button>
+                        <button className="btn btn-secondary" onClick={() => navigate(`/recipe-editor/${r.id}`)} style={{ padding: "3px 10px", fontSize: 12 }}>編集</button>
                         <button className="btn btn-secondary" onClick={() => handleArchiveToggle(r.id, r.name)} style={{ padding: "3px 10px", fontSize: 12 }}>アーカイブ</button>
                         <button className="btn" onClick={() => handleDelete(r.id, r.name)} style={{ padding: "3px 10px", fontSize: 12, background: "var(--accent)", color: "#fff" }}>削除</button>
                       </>

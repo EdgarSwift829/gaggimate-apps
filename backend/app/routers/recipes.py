@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.services.llm import generate_recipe_suggestion
+from app.services.gaggimate_ws import gaggimate_client
 
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
 
@@ -262,5 +263,50 @@ async def delete_recipe(recipe_id: int, force: bool = False):
         await db.execute("DELETE FROM recipes WHERE id = ?", [recipe_id])
         await db.commit()
         return {"ok": True, "archived": False}
+    finally:
+        await db.close()
+
+
+@router.post("/sync-from-device")
+async def sync_recipes_from_device():
+    """GaggiMate デバイスからプロファイルを同期し、DBに保存."""
+    db = await get_db()
+    try:
+        # デバイスからプロファイル一覧を取得
+        profiles = await gaggimate_client.list_profiles()
+
+        synced_count = 0
+
+        for profile in profiles:
+            profile_id = profile.get("id")
+            profile_name = profile.get("label", profile_id or "Unknown")
+            profile_json = json_lib.dumps(profile)
+
+            if not profile_id:
+                continue
+
+            # source が一致する既存レシピを確認
+            existing_row = await db.execute(
+                "SELECT id FROM recipes WHERE source = ?", [profile_id]
+            )
+            existing = await existing_row.fetchone()
+
+            if existing:
+                # 既存レシピを更新
+                await db.execute(
+                    "UPDATE recipes SET name = ?, json = ? WHERE source = ?",
+                    [profile_name, profile_json, profile_id],
+                )
+                synced_count += 1
+            else:
+                # 新規レシピを挿入
+                await db.execute(
+                    "INSERT INTO recipes (name, json, is_community, source, version) VALUES (?, ?, ?, ?, ?)",
+                    [profile_name, profile_json, 1, profile_id, 1],
+                )
+                synced_count += 1
+
+        await db.commit()
+        return {"synced": synced_count}
     finally:
         await db.close()

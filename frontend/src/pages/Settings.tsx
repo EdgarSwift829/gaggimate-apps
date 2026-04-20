@@ -135,6 +135,7 @@ export default function SettingsPage() {
   const [health, setHealth] = useState<{ status: string; gaggimate_connected: boolean } | null>(null);
   const [llmResult, setLlmResult] = useState<LLMTestResult | null>(null);
   const [llmTesting, setLlmTesting] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [lineTestResult, setLineTestResult] = useState<string | null>(null);
@@ -191,6 +192,9 @@ export default function SettingsPage() {
       const res = await fetch(`${API_BASE}/api/llm/test`);
       const data = await res.json();
       setLlmResult(data);
+      if (data.available_models?.length) {
+        setAvailableModels(data.available_models);
+      }
     } catch {
       setLlmResult({ connected: false, base_url: "", error: "バックエンドに接続できません" });
     }
@@ -302,10 +306,22 @@ export default function SettingsPage() {
         </div>
         <div className="form-group">
           <label>モデル</label>
-          <input
-            value={form.lm_studio_model}
-            onChange={(e) => handleFormChange("lm_studio_model", e.target.value)}
-          />
+          {availableModels.length > 0 ? (
+            <select
+              value={form.lm_studio_model}
+              onChange={(e) => handleFormChange("lm_studio_model", e.target.value)}
+            >
+              {availableModels.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={form.lm_studio_model}
+              onChange={(e) => handleFormChange("lm_studio_model", e.target.value)}
+              placeholder="接続テストでモデル一覧を取得"
+            />
+          )}
         </div>
         <button className="btn btn-primary" onClick={testLLM} disabled={llmTesting} style={{ marginTop: 8 }}>
           {llmTesting ? "テスト中..." : "LM Studio 接続テスト"}

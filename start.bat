@@ -23,7 +23,7 @@ REM PIDファイル初期化
 echo. > "%PIDFILE%"
 
 echo [1/3] シミュレーターを起動中...
-start /b "" cmd /c "cd /d "%ROOT%\simulator" && python gaggimate_sim.py --ws-port 8765 --webhook-url http://localhost:8000/webhook > "%ROOT%\logs\simulator.log" 2>&1"
+start /b "" cmd /c "cd /d "%ROOT%\simulator" && python gaggimate_sim.py --ws-port 8766 --webhook-url http://localhost:8005/webhook > "%ROOT%\logs\simulator.log" 2>&1"
 timeout /t 1 /nobreak > nul
 for /f "tokens=2" %%i in ('tasklist /fi "windowtitle eq GaggiMate*" /fo list ^| findstr "PID"') do echo %%i >> "%PIDFILE%"
 
@@ -36,11 +36,11 @@ echo %SIM_LINE% >> "%PIDFILE%"
 timeout /t 2 /nobreak > nul
 
 echo [2/3] バックエンドを起動中...
-start /b "" cmd /c "cd /d "%ROOT%\backend" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > "%ROOT%\logs\backend.log" 2>&1"
+start /b "" cmd /c "cd /d "%ROOT%\backend" && python -m uvicorn app.main:app --host 0.0.0.0 --port 8005 > "%ROOT%\logs\backend.log" 2>&1"
 timeout /t 4 /nobreak > nul
 
 REM バックエンド疎通確認
-curl -s http://localhost:8000/api/health > nul 2>&1
+curl -s http://localhost:8005/api/health > nul 2>&1
 if errorlevel 1 (
     echo [!] バックエンド起動に失敗しました。logs\backend.log を確認してください。
     pause
@@ -69,16 +69,16 @@ echo ========================================
 echo  起動完了！
 echo.
 echo  [PC]
-echo  フロントエンド: http://localhost:5173
-echo  API:           http://localhost:8000
-echo  API Docs:      http://localhost:8000/docs
+echo  フロントエンド: http://localhost:5174
+echo  API:           http://localhost:8005
+echo  API Docs:      http://localhost:8005/docs
 echo.
 echo  ログ: logs\backend.log / simulator.log / frontend.log
 echo ========================================
 echo.
 
 REM スマホ用QRコード表示
-python "%ROOT%\show_qr.py" 5173
+python "%ROOT%\show_qr.py" 5174
 
 echo.
 echo 停止するには stop.bat を実行してください。

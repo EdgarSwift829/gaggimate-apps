@@ -44,7 +44,16 @@
       "Bash(python:*)",
       "Bash(mkdir -p /E/projects/gaggimate-apps/logs)",
       "Bash(echo \"logs/\")",
-      "Bash(echo \"gaggimate.pids\")"
+      "Bash(echo \"gaggimate.pids\")",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Read(//c/Users/yusuk/.claude/hooks/**)",
+      "Bash(node magi-cli.js task-add \"設定画面にデフォルトdose_g選択を追加\")",
+      "Bash(node:*)",
+      "Bash(git add:*)"
     ]
   }
 }

@@ -267,6 +267,83 @@ async def delete_recipe(recipe_id: int, force: bool = False):
         await db.close()
 
 
+_DEFAULT_RECIPES = [
+    {
+        "name": "ハンドエスプレッソ風（蒸らし）",
+        "extractionTimeSec": 30,
+        "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 93}, {"t": 30, "v": 93}],
+            "pressure": [{"t": 0, "v": 3}, {"t": 3, "v": 3}, {"t": 8, "v": 9}, {"t": 30, "v": 9}],
+            "flow":     [{"t": 0, "v": 1.75}, {"t": 3, "v": 1.75}, {"t": 8, "v": 2.5}, {"t": 30, "v": 2.5}],
+        },
+    },
+    {
+        "name": "低圧スロー",
+        "extractionTimeSec": 40,
+        "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 91}, {"t": 40, "v": 91}],
+            "pressure": [{"t": 0, "v": 2}, {"t": 5, "v": 6}, {"t": 40, "v": 6}],
+            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1.5}, {"t": 40, "v": 1.5}],
+        },
+    },
+    {
+        "name": "ターボショット",
+        "extractionTimeSec": 18,
+        "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 94}, {"t": 18, "v": 94}],
+            "pressure": [{"t": 0, "v": 4}, {"t": 3, "v": 9}, {"t": 18, "v": 9}],
+            "flow":     [{"t": 0, "v": 2}, {"t": 3, "v": 3.5}, {"t": 18, "v": 3.5}],
+        },
+    },
+    {
+        "name": "ディクリーニング（レバー風）",
+        "extractionTimeSec": 33,
+        "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 92}, {"t": 33, "v": 92}],
+            "pressure": [{"t": 0, "v": 4}, {"t": 8, "v": 4}, {"t": 13, "v": 9}, {"t": 33, "v": 4}],
+            "flow":     [{"t": 0, "v": 1.5}, {"t": 8, "v": 1.5}, {"t": 13, "v": 2}, {"t": 33, "v": 1.25}],
+        },
+    },
+    {
+        "name": "トロトロ（赤石スタイル）",
+        "extractionTimeSec": 35,
+        "targetVolumeMl": 23,
+        "curves": {
+            "temp":     [{"t": 0, "v": 89}, {"t": 35, "v": 89}],
+            "pressure": [{"t": 0, "v": 3}, {"t": 5, "v": 3}, {"t": 10, "v": 9}, {"t": 35, "v": 6}],
+            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1}, {"t": 10, "v": 1.5}, {"t": 35, "v": 0.9}],
+        },
+    },
+]
+
+
+@router.post("/seed-defaults")
+async def seed_default_recipes():
+    """プリセットレシピを登録（同名が存在する場合はスキップ）."""
+    db = await get_db()
+    try:
+        created = 0
+        skipped = 0
+        for recipe in _DEFAULT_RECIPES:
+            row = await db.execute("SELECT id FROM recipes WHERE name = ?", [recipe["name"]])
+            if await row.fetchone():
+                skipped += 1
+                continue
+            await db.execute(
+                "INSERT INTO recipes (name, json, version, is_favorite) VALUES (?, ?, ?, ?)",
+                [recipe["name"], json_lib.dumps(recipe), 1, 0],
+            )
+            created += 1
+        await db.commit()
+        return {"created": created, "skipped": skipped}
+    finally:
+        await db.close()
+
+
 @router.post("/sync-from-device")
 async def sync_recipes_from_device():
     """GaggiMate デバイスからプロファイルを同期し、DBに保存."""

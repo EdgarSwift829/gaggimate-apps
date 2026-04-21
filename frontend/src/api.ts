@@ -124,6 +124,8 @@ export const getRecipeUsage = (id: number) =>
   fetchJSON<{ recipe_id: number; shot_count: number }>(`/api/recipes/${id}/usage`);
 export const syncFromDevice = () =>
   fetchJSON<{ synced: number }>("/api/recipes/sync-from-device", { method: "POST" });
+export const seedDefaultRecipes = () =>
+  fetchJSON<{ created: number; skipped: number }>("/api/recipes/seed-defaults", { method: "POST" });
 
 // --- LLM ---
 export const testLLM = () => fetchJSON<{ connected: boolean; base_url: string; available_models?: string[]; error?: string }>("/api/llm/test");

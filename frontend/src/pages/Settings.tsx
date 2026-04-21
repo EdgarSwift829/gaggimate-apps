@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getHealth, getSettings, saveSettings, type Settings } from "../api";
+import { getHealth, getSettings, saveSettings, seedDefaultRecipes, type Settings } from "../api";
 
 const API_BASE = `http://${window.location.hostname}:8005`;
 
@@ -140,6 +140,7 @@ export default function SettingsPage() {
   const [pushLoading, setPushLoading] = useState(false);
   const [lineTestResult, setLineTestResult] = useState<string | null>(null);
   const [lineTestLoading, setLineTestLoading] = useState(false);
+  const [seedLoading, setSeedLoading] = useState(false);
 
   // 設定フォームの状態
   const [form, setForm] = useState<Settings>(DEFAULT_SETTINGS);
@@ -217,6 +218,19 @@ export default function SettingsPage() {
       setLineTestResult("エラー: バックエンドに接続できません");
     }
     setLineTestLoading(false);
+  };
+
+  const handleSeedDefaults = async () => {
+    setSeedLoading(true);
+    try {
+      const res = await seedDefaultRecipes();
+      setSaveToast(`サンプルレシピ: ${res.created}件追加、${res.skipped}件スキップ`);
+    } catch {
+      setSaveToast("サンプルレシピの読み込みに失敗しました");
+    } finally {
+      setSeedLoading(false);
+      setTimeout(() => setSaveToast(null), 3000);
+    }
   };
 
   const handlePushToggle = async () => {
@@ -389,6 +403,19 @@ export default function SettingsPage() {
       </div>
 
       <DefaultDoseSelector onToast={(msg) => { setSaveToast(msg); setTimeout(() => setSaveToast(null), 2000); }} />
+
+      <div className="card">
+        <h3>レシピ管理</h3>
+        <div className="form-group">
+          <label>サンプルレシピ（5種）を読み込む</label>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
+            ハンドエスプレッソ風 / 低圧スロー / ターボショット / ディクリーニング / トロトロ（赤石スタイル）
+          </div>
+          <button className="btn btn-secondary" onClick={handleSeedDefaults} disabled={seedLoading}>
+            {seedLoading ? "読み込み中..." : "サンプルレシピを読み込む"}
+          </button>
+        </div>
+      </div>
 
       <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>

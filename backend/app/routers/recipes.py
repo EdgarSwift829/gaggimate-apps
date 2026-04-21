@@ -6,7 +6,7 @@ import json as json_lib
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 
-from app.database import get_db
+from app.database import get_db, _DEFAULT_RECIPES
 from app.services.llm import generate_recipe_suggestion
 from app.services.gaggimate_ws import gaggimate_client
 
@@ -267,62 +267,9 @@ async def delete_recipe(recipe_id: int, force: bool = False):
         await db.close()
 
 
-_DEFAULT_RECIPES = [
-    {
-        "name": "ハンドエスプレッソ風（蒸らし）",
-        "extractionTimeSec": 30,
-        "targetVolumeMl": 32,
-        "curves": {
-            "temp":     [{"t": 0, "v": 93}, {"t": 30, "v": 93}],
-            "pressure": [{"t": 0, "v": 3}, {"t": 3, "v": 3}, {"t": 8, "v": 9}, {"t": 30, "v": 9}],
-            "flow":     [{"t": 0, "v": 1.75}, {"t": 3, "v": 1.75}, {"t": 8, "v": 2.5}, {"t": 30, "v": 2.5}],
-        },
-    },
-    {
-        "name": "低圧スロー",
-        "extractionTimeSec": 40,
-        "targetVolumeMl": 32,
-        "curves": {
-            "temp":     [{"t": 0, "v": 91}, {"t": 40, "v": 91}],
-            "pressure": [{"t": 0, "v": 2}, {"t": 5, "v": 6}, {"t": 40, "v": 6}],
-            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1.5}, {"t": 40, "v": 1.5}],
-        },
-    },
-    {
-        "name": "ターボショット",
-        "extractionTimeSec": 18,
-        "targetVolumeMl": 32,
-        "curves": {
-            "temp":     [{"t": 0, "v": 94}, {"t": 18, "v": 94}],
-            "pressure": [{"t": 0, "v": 4}, {"t": 3, "v": 9}, {"t": 18, "v": 9}],
-            "flow":     [{"t": 0, "v": 2}, {"t": 3, "v": 3.5}, {"t": 18, "v": 3.5}],
-        },
-    },
-    {
-        "name": "ディクリーニング（レバー風）",
-        "extractionTimeSec": 33,
-        "targetVolumeMl": 32,
-        "curves": {
-            "temp":     [{"t": 0, "v": 92}, {"t": 33, "v": 92}],
-            "pressure": [{"t": 0, "v": 4}, {"t": 8, "v": 4}, {"t": 13, "v": 9}, {"t": 33, "v": 4}],
-            "flow":     [{"t": 0, "v": 1.5}, {"t": 8, "v": 1.5}, {"t": 13, "v": 2}, {"t": 33, "v": 1.25}],
-        },
-    },
-    {
-        "name": "トロトロ（赤石スタイル）",
-        "extractionTimeSec": 35,
-        "targetVolumeMl": 23,
-        "curves": {
-            "temp":     [{"t": 0, "v": 89}, {"t": 35, "v": 89}],
-            "pressure": [{"t": 0, "v": 3}, {"t": 5, "v": 3}, {"t": 10, "v": 9}, {"t": 35, "v": 6}],
-            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1}, {"t": 10, "v": 1.5}, {"t": 35, "v": 0.9}],
-        },
-    },
-]
-
-
-async def seed_defaults() -> dict:
-    """プリセットレシピを登録（同名が存在する場合はスキップ）."""
+@router.post("/seed-defaults")
+async def seed_default_recipes():
+    """プリセットレシピを手動で再登録（同名スキップ）."""
     db = await get_db()
     try:
         created = 0
@@ -341,11 +288,6 @@ async def seed_defaults() -> dict:
         return {"created": created, "skipped": skipped}
     finally:
         await db.close()
-
-
-@router.post("/seed-defaults")
-async def seed_default_recipes():
-    return await seed_defaults()
 
 
 @router.post("/sync-from-device")

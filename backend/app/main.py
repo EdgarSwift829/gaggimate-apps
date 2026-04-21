@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routers import shots, beans, recipes, webhook, machine, llm_api, notifications, prompts, analytics, recipe_ai, qr, settings as settings_router
+from app.routers.recipes import seed_defaults
 from app.services.gaggimate_ws import gaggimate_client
 from app.services.mqtt_client import mqtt_client
 
@@ -86,6 +87,10 @@ async def startup():
     logger.info("Initializing database...")
     await init_db()
     logger.info("Database ready")
+
+    result = await seed_defaults()
+    if result["created"]:
+        logger.info("Seeded %d default recipes", result["created"])
 
     # GaggiMate WebSocket接続（バックグラウンド）
     gaggimate_client.add_listener(_forward_to_clients)

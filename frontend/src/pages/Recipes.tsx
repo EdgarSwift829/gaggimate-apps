@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getRecipes, toggleFavorite, toggleArchive, customizeRecipe, updateRecipe, deleteRecipe, getRecipeUsage, importRecipe, syncFromDevice, type Recipe } from "../api";
+import { getRecipes, toggleFavorite, toggleArchive, customizeRecipe, updateRecipe, deleteRecipe, getRecipeUsage, importRecipe, syncFromDevice, startBrew, type Recipe } from "../api";
 
 // ---------------------------------------------------------------------------
 // Profile types (GaggiMate JSON structure)
@@ -615,6 +615,22 @@ export default function RecipesPage() {
     }
   };
 
+  const handleBrew = async (r: Recipe) => {
+    try {
+      const profileJson = JSON.parse(r.json) as { stop_on_weight?: number };
+      localStorage.setItem("brew_stop_on_weight", String(profileJson.stop_on_weight ?? 0));
+      localStorage.setItem("brew_recipe_id", String(r.id));
+    } catch {
+      localStorage.removeItem("brew_stop_on_weight");
+    }
+    try {
+      await startBrew();
+      navigate("/brewing");
+    } catch {
+      alert("抽出開始に失敗しました");
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -719,6 +735,7 @@ export default function RecipesPage() {
                       </button>
                     ) : (
                       <>
+                        <button className="btn btn-success" onClick={() => handleBrew(r)} style={{ padding: "3px 10px", fontSize: 12 }}>▶ 抽出</button>
                         <button className="btn btn-secondary" onClick={() => navigate(`/recipe-editor/${r.id}`)} style={{ padding: "3px 10px", fontSize: 12 }}>編集</button>
                         <button className="btn btn-secondary" onClick={() => handleArchiveToggle(r.id, r.name)} style={{ padding: "3px 10px", fontSize: 12 }}>アーカイブ</button>
                         <button className="btn" onClick={() => handleDelete(r.id, r.name)} style={{ padding: "3px 10px", fontSize: 12, background: "var(--accent)", color: "#fff" }}>削除</button>

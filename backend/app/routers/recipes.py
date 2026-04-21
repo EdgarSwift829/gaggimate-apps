@@ -321,8 +321,7 @@ _DEFAULT_RECIPES = [
 ]
 
 
-@router.post("/seed-defaults")
-async def seed_default_recipes():
+async def seed_defaults() -> dict:
     """プリセットレシピを登録（同名が存在する場合はスキップ）."""
     db = await get_db()
     try:
@@ -342,6 +341,11 @@ async def seed_default_recipes():
         return {"created": created, "skipped": skipped}
     finally:
         await db.close()
+
+
+@router.post("/seed-defaults")
+async def seed_default_recipes():
+    return await seed_defaults()
 
 
 @router.post("/sync-from-device")

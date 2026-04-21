@@ -164,41 +164,44 @@ export default function SetupWizard({ onClose }: SetupWizardProps) {
           <>
             <h2 style={{ marginBottom: 6 }}>① GaggiMateのIPを確認する</h2>
             <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
-              GaggiMate ProのIPアドレスまたはホスト名が必要です。以下のいずれかの方法で確認してください。
+              GaggiMate ProのIPアドレスまたはホスト名が必要です。以下の方法で確認してください。
             </p>
 
             <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#2ecc71", marginBottom: 6 }}>
+                方法A — ホスト名をそのまま使う（一番簡単）
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7, paddingLeft: 12, borderLeft: "2px solid #2ecc71" }}>
+                同じWi-Fiに接続していれば <code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>gaggimate.local</code> のままで接続できます。<br />
+                次の画面で接続テストを押して確認してください。
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#3498db", marginBottom: 6 }}>
-                方法A — GaggiMateのWeb UIで確認（推奨）
+                方法B — ルーター管理画面で確認
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7, paddingLeft: 12, borderLeft: "2px solid #3498db" }}>
-                1. スマホまたはPCのブラウザで<br />
-                &emsp;<code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>http://gaggimate.local</code> を開く<br />
-                2. 右上のアイコン → 「Settings」→「Network」<br />
-                3. 表示されているIPアドレスをメモ
+                1. ブラウザで <code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>192.168.1.1</code> または <code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>192.168.0.1</code> を開く<br />
+                2. 接続デバイス一覧から「GaggiMate」または「ESP32」を探す<br />
+                3. 表示されているIPアドレスをメモ（例: 192.168.1.50）
               </div>
             </div>
 
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#f39c12", marginBottom: 6 }}>
-                方法B — ルーター管理画面で確認
+                方法C — スマホのネットワークスキャンアプリで確認
               </div>
               <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7, paddingLeft: 12, borderLeft: "2px solid #f39c12" }}>
-                1. ブラウザで <code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>192.168.1.1</code> または <code style={{ background: "var(--bg)", padding: "2px 6px", borderRadius: 3 }}>192.168.0.1</code> を開く<br />
-                2. 接続デバイス一覧から「GaggiMate」を探す<br />
-                3. 表示されているIPアドレスをメモ
+                「Fing」などのアプリで同一Wi-Fi上のデバイスを検索し、<br />
+                「GaggiMate」または「ESP32」のIPアドレスを確認してください。
               </div>
             </div>
-
-            <InfoBox>
-              💡 <strong>ホスト名で接続できる場合</strong><br />
-              同一Wi-Fiなら <code>gaggimate.local</code> のまま使えることが多いです。IPアドレスが変わらない固定IPの設定も推奨します。
-            </InfoBox>
 
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setStep("welcome")}>← 戻る</button>
               <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => setStep("connect")}>
-                確認できた → 次へ
+                次へ →
               </button>
             </div>
             <button className="btn btn-secondary" style={{ width: "100%", marginTop: 8 }} onClick={skip}>スキップ</button>

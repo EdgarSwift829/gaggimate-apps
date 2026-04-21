@@ -3,9 +3,58 @@
 from __future__ import annotations
 
 import aiosqlite
+import json as json_lib
 from pathlib import Path
 
 from app.config import settings
+
+_DEFAULT_RECIPES = [
+    {
+        "name": "ハンドエスプレッソ風（蒸らし）",
+        "extractionTimeSec": 30, "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 93}, {"t": 30, "v": 93}],
+            "pressure": [{"t": 0, "v": 3}, {"t": 3, "v": 3}, {"t": 8, "v": 9}, {"t": 30, "v": 9}],
+            "flow":     [{"t": 0, "v": 1.75}, {"t": 3, "v": 1.75}, {"t": 8, "v": 2.5}, {"t": 30, "v": 2.5}],
+        },
+    },
+    {
+        "name": "低圧スロー",
+        "extractionTimeSec": 40, "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 91}, {"t": 40, "v": 91}],
+            "pressure": [{"t": 0, "v": 2}, {"t": 5, "v": 6}, {"t": 40, "v": 6}],
+            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1.5}, {"t": 40, "v": 1.5}],
+        },
+    },
+    {
+        "name": "ターボショット",
+        "extractionTimeSec": 18, "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 94}, {"t": 18, "v": 94}],
+            "pressure": [{"t": 0, "v": 4}, {"t": 3, "v": 9}, {"t": 18, "v": 9}],
+            "flow":     [{"t": 0, "v": 2}, {"t": 3, "v": 3.5}, {"t": 18, "v": 3.5}],
+        },
+    },
+    {
+        "name": "ディクリーニング（レバー風）",
+        "extractionTimeSec": 33, "targetVolumeMl": 32,
+        "curves": {
+            "temp":     [{"t": 0, "v": 92}, {"t": 33, "v": 92}],
+            "pressure": [{"t": 0, "v": 4}, {"t": 8, "v": 4}, {"t": 13, "v": 9}, {"t": 33, "v": 4}],
+            "flow":     [{"t": 0, "v": 1.5}, {"t": 8, "v": 1.5}, {"t": 13, "v": 2}, {"t": 33, "v": 1.25}],
+        },
+    },
+    {
+        "name": "トロトロ（赤石スタイル）",
+        "extractionTimeSec": 35, "targetVolumeMl": 23,
+        "curves": {
+            "temp":     [{"t": 0, "v": 89}, {"t": 35, "v": 89}],
+            "pressure": [{"t": 0, "v": 3}, {"t": 5, "v": 3}, {"t": 10, "v": 9}, {"t": 35, "v": 6}],
+            "flow":     [{"t": 0, "v": 1}, {"t": 5, "v": 1}, {"t": 10, "v": 1.5}, {"t": 35, "v": 0.9}],
+        },
+    },
+]
 
 SCHEMA_SQL = """
 -- 豆マスター
@@ -117,11 +166,17 @@ async def _migrate_recipes_columns(db: aiosqlite.Connection) -> None:
 
 
 async def init_db() -> None:
-    """テーブル作成（アプリ起動時に呼ぶ）."""
+    """テーブル作成 + デフォルトレシピ挿入（アプリ起動時に呼ぶ）."""
     db = await get_db()
     try:
         await db.executescript(SCHEMA_SQL)
         await _migrate_recipes_columns(db)
+        for recipe in _DEFAULT_RECIPES:
+            await db.execute(
+                "INSERT OR IGNORE INTO recipes (name, json, version, is_favorite)"
+                " SELECT ?, ?, 1, 0 WHERE NOT EXISTS (SELECT 1 FROM recipes WHERE name = ?)",
+                [recipe["name"], json_lib.dumps(recipe), recipe["name"]],
+            )
         await db.commit()
     finally:
         await db.close()

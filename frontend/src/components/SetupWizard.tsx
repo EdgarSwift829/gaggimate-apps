@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { getHealth, getSettings, saveSettings } from "../api";
 
+const BACKEND_URL = `http://${window.location.hostname}:8005`;
+
 type Step = "welcome" | "connect" | "done";
 
 interface SetupWizardProps {
@@ -123,6 +125,38 @@ export default function SetupWizard({ onClose }: SetupWizardProps) {
                 value={port}
                 onChange={(e) => { setPort(parseInt(e.target.value, 10) || 8765); setTestResult(null); }}
               />
+            </div>
+
+            {/* GaggiMate側に設定するURL */}
+            <div style={{
+              background: "rgba(52,152,219,0.1)", border: "1px solid #3498db",
+              borderRadius: "var(--radius)", padding: "14px 16px", marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 12, color: "#3498db", fontWeight: 600, marginBottom: 8 }}>
+                GaggiMate 側の設定
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.6 }}>
+                GaggiMate Pro の Webhook / コールバック設定に<br />このURLを入力してください。
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <code style={{
+                  flex: 1, padding: "6px 10px", background: "var(--bg)",
+                  borderRadius: 4, fontSize: 13, color: "#eee",
+                  wordBreak: "break-all",
+                }}>
+                  {BACKEND_URL}
+                </code>
+                <button
+                  onClick={() => navigator.clipboard.writeText(BACKEND_URL)}
+                  style={{
+                    padding: "6px 10px", background: "#3498db", color: "#fff",
+                    border: "none", borderRadius: 4, cursor: "pointer", fontSize: 12,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  コピー
+                </button>
+              </div>
             </div>
 
             {testResult && (

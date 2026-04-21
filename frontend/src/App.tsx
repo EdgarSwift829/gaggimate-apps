@@ -1,5 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { getHealth } from "./api";
+import SetupWizard from "./components/SetupWizard";
 import Home from "./pages/Home";
 import Brewing from "./pages/Brewing";
 import ShotResult from "./pages/ShotResult";
@@ -26,7 +28,15 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean }[] = [
 
 function App() {
   const [collapsed, setCollapsed] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const touchStartX = useRef(0);
+
+  useEffect(() => {
+    if (localStorage.getItem("setup_wizard_skipped")) return;
+    getHealth()
+      .then((h) => { if (!h.gaggimate_connected) setShowWizard(true); })
+      .catch(() => setShowWizard(true));
+  }, []);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length > 1) return; // ignore pinch
@@ -43,6 +53,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
       <div
         className="app"
         onTouchStart={handleTouchStart}
